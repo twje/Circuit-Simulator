@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-class Shape;
+class Component;
 
 void DrawPoint(sf::RenderTarget& target, sf::Vector2f position, float radius, sf::Color color)
 {
@@ -15,7 +15,7 @@ void DrawPoint(sf::RenderTarget& target, sf::Vector2f position, float radius, sf
 class Node
 {
 public:
-    Node(Shape* parent, const sf::Vector2f& position)
+    Node(Component* parent, const sf::Vector2f& position)
         : mParent(parent)
         , mPosition(position)
     { }
@@ -28,20 +28,20 @@ public:
     const sf::Vector2f& GetPosition() const { return mPosition; }
 
 public:
-    Shape* mParent;
+    Component* mParent;
     sf::Vector2f mPosition;
 };
 
-class Shape
+class Component
 {
 public:    
-    virtual ~Shape() = default;
+    virtual ~Component() = default;
 
-    Shape(size_t maxNodes)
+    Component(size_t maxNodes)
         : mMaxNodes(maxNodes)
         , mColor(sf::Color::Green)
     {
-        mNodes.reserve(maxNodes);
+        mNodes.reserve(maxNodes);        
     }    
 
     Node* GetNextNode(const sf::Vector2f& position)
@@ -53,10 +53,12 @@ public:
 
         Node node(this, position);
         mNodes.push_back(node);
-        return &mNodes[mNodes.size() - 1];
+
+        mSelectedNode = &mNodes[mNodes.size() - 1];
+        return mSelectedNode;
     }
 
-    size_t NodeCount() const { return mNodes.size(); }
+    Node* GetSelectedNode() { return mSelectedNode; }    
     const Node& GetNode(size_t index) const { return mNodes[index]; }
     const sf::Color& GetColor() { return mColor; }
 
@@ -70,20 +72,32 @@ public:
         }
     }
 
+    virtual Component* CreateShape(const sf::Vector2f& cursor) const = 0;
     virtual void DrawShape(sf::RenderTarget& target) = 0;
+    virtual void DrawIcon(sf::RenderTarget& target, const sf::Transform& transform, const sf::FloatRect& localBounds) = 0;
 
 private:
     std::vector<Node> mNodes;
+    Node* mSelectedNode{ nullptr };
     size_t mMaxNodes;
     sf::Color mColor;
 };
 
-class Line : public Shape
+class Wire : public Component
 {
 public:
-    Line()
-        : Shape(2)
+    Wire()
+        : Component(2)
     { }
+
+    virtual Component* CreateShape(const sf::Vector2f& cursor) const
+    {
+        Component* tempShape = new Wire();
+        tempShape->GetNextNode(cursor);
+        tempShape->GetNextNode(cursor);
+
+        return tempShape;
+    }
 
     virtual void DrawShape(sf::RenderTarget& target)
     {
@@ -97,41 +111,46 @@ public:
 
         target.draw(line, 2, sf::PrimitiveType::Lines);
     }
-};
 
-class Box : public Shape
-{
-public:
-    Box()
-        : Shape(2)
-    { }
-
-    virtual void DrawShape(sf::RenderTarget& target)
+    virtual void DrawIcon(sf::RenderTarget& target, const sf::Transform& transform, const sf::FloatRect& localBounds) override
     {
-        const sf::Vector2f& position1 = GetNode(0).GetPosition();
-        const sf::Vector2f& position2 = GetNode(1).GetPosition();
-        sf::Vector2f size = position2 - position1;
+        sf::RenderStates states;
+        states.transform = transform;
 
-        sf::RectangleShape rectangle(size);
-        rectangle.setPosition(position1);        
-        rectangle.setFillColor({ 0, 0, 0, 0 });
-        rectangle.setOutlineColor(GetColor());
-        rectangle.setOutlineThickness(-1.f);
+        float halfHeight = localBounds.top + localBounds.height / 2.0f;
+        float startX = localBounds.left;
+        float endX = localBounds.left + localBounds.width;
 
-        target.draw(rectangle);
+        sf::Vertex line[] = {
+            sf::Vector2f(startX, halfHeight),
+            sf::Vector2f(endX, halfHeight)
+        };
+
+        line[0].color = sf::Color::Cyan;
+        line[1].color = sf::Color::Cyan;
+
+        target.draw(line, 2, sf::PrimitiveType::Lines, states);
     }
 };
 
-class Circle : public Shape
+class LightBulb : public Component
 {
 public:
-    Circle()
-        : Shape(2)
+    LightBulb()
+        : Component(2)
     { }
+
+    virtual Component* CreateShape(const sf::Vector2f& cursor) const
+    {
+        Component* tempShape = new LightBulb();
+        tempShape->GetNextNode(cursor);
+        tempShape->GetNextNode(cursor);
+
+        return tempShape;
+    }
 
     virtual void DrawShape(sf::RenderTarget& target)
     {
-
         const sf::Vector2f& position1 = GetNode(0).GetPosition();
         const sf::Vector2f& position2 = GetNode(1).GetPosition();
         float radius = (position1 - position2).length();
@@ -146,75 +165,123 @@ public:
         circle.setOutlineColor(GetColor());
         circle.setOutlineThickness(1.0f);
         circle.setPosition(position1 - sf::Vector2f(radius, radius));
-        
+
         target.draw(line, 2, sf::PrimitiveType::Lines);
         target.draw(circle);
     }
-};
 
-class Curve : public Shape
-{
-public:
-    Curve()
-        : Shape(3)
-    { }
-
-    virtual void DrawShape(sf::RenderTarget& target)
+    virtual void DrawIcon(sf::RenderTarget& target, const sf::Transform& transform, const sf::FloatRect& localBounds) override
     {
-        // Can only draw line from first to second
-        if (NodeCount() < 3)
-        {
-            const sf::Vector2f& position1 = GetNode(0).GetPosition();
-            const sf::Vector2f& position2 = GetNode(1).GetPosition();
+        sf::RenderStates states;
+        states.transform = transform;
 
-            sf::Vertex line[] = { position1, position2 };
+        float halfHeight = localBounds.top + localBounds.height / 2.0f;
+        float halfWidth = localBounds.left + localBounds.width / 2.0f;
+        float radius = halfWidth;
 
-            line[0].color = GetColor();
-            line[1].color = GetColor();
+        sf::CircleShape circle(radius);
+        circle.setFillColor(sf::Color::Blue);
+        circle.setPosition(sf::Vector2f(halfHeight, halfWidth) - sf::Vector2f(radius, radius));
 
-            target.draw(line, 2, sf::PrimitiveType::Lines);
-        }
-
-        if (NodeCount() == 3)
-        {
-            const sf::Vector2f& position1 = GetNode(0).GetPosition();
-            const sf::Vector2f& position2 = GetNode(1).GetPosition();
-            const sf::Vector2f& position3 = GetNode(2).GetPosition();
-
-            sf::Vertex line1[] = { position1, position2 };
-            line1[0].color = GetColor();
-            line1[1].color = GetColor();
-
-            sf::Vertex line2[] = { position2, position3 };
-            line2[0].color = GetColor();
-            line2[1].color = GetColor();
-            
-            target.draw(line1, 2, sf::PrimitiveType::Lines);
-            target.draw(line2, 2, sf::PrimitiveType::Lines);
-
-            // Bezier 
-            sf::Vector2f op = position1;
-            sf::Vector2f np = op;
-            for (float t = 0; t < 1.0f; t += 0.01f)
-            {
-                np = (1 - t) * (1 - t) * position1 + 2 * (1 - t) * t * position2 + t * t * position3;
-                sf::Vertex line[] = { op, np };
-                line[0].color = GetColor();
-                line[1].color = GetColor();
-                target.draw(line, 2, sf::PrimitiveType::Lines);
-                op = np;
-            }
-        }
+        target.draw(circle, states);
     }
 };
 
-enum class ShapeType
+class ComponentPreviewCreator : public sf::Transformable
 {
-    NONE = 0,
-    LINE = 1,
-    BOX = 2,
-    CIRCLE = 3,
-    CURVE = 4
+public:
+    ComponentPreviewCreator(std::unique_ptr<Component> shape)
+        : mShape(std::move(shape))
+    { }
+
+    void Draw(sf::RenderTarget& target)
+    {
+        // Compute local bounds
+        float border = 2.0f;
+        float padding = 1.0f;
+        float totalBorderPadding = border + padding;
+        sf::Vector2f size(100, 100);        
+        sf::FloatRect localBounds(
+            { totalBorderPadding , totalBorderPadding },
+            { size.x - 2 * totalBorderPadding , size.y - 2 * totalBorderPadding }
+        );
+     
+        // Draw background
+        sf::RectangleShape background(size);
+        background.setFillColor({ sf::Color::Magenta });
+        background.setOutlineColor(sf::Color::Red);
+        background.setOutlineThickness(-border);
+        target.draw(background, getTransform());
+
+        // Draw component
+        mShape->DrawIcon(target, getTransform(), localBounds);
+    }
+
+    Component* CreateShape(const sf::Vector2f& cursor)
+    {
+        return mShape->CreateShape(cursor);
+    }
+
+private:
+    std::unique_ptr<Component> mShape;
+};
+
+class ComponentPicker
+{
+public:
+    void AddComponent(std::unique_ptr<Component> component)
+    {
+        if (mComponents.empty())
+        {
+            mSelectedComponent = 0;
+        }
+        mComponents.emplace_back(std::make_unique<ComponentPreviewCreator>(std::move(component)));
+    }
+
+    void StepForward() 
+    { 
+        if (!mComponents.empty())
+        {
+            if (mSelectedComponent.value() + 1 >= mComponents.size())
+            {             
+                mSelectedComponent = 0;
+            }
+            else
+            {             
+                mSelectedComponent = mSelectedComponent.value() + 1;
+            }
+        }
+    }
+    
+    void StepBack() 
+    { 
+        if (!mComponents.empty())
+        {
+            if (mSelectedComponent.value() == 0)
+            {             
+                mSelectedComponent = mComponents.size() - 1;
+            }
+            else
+            {             
+                mSelectedComponent = mSelectedComponent.value() - 1;
+            }
+        }
+    }
+
+    Component* NewComponent(const sf::Vector2f& cursor)
+    {
+        assert(mSelectedComponent.has_value() && mSelectedComponent < mComponents.size());
+        return mComponents[mSelectedComponent.value()]->CreateShape(cursor);
+    }    
+
+    void Draw(sf::RenderTarget& target)
+    {
+        mComponents[mSelectedComponent.value()]->Draw(target);
+    }
+
+private:
+    std::optional<size_t> mSelectedComponent;
+    std::vector<std::unique_ptr<ComponentPreviewCreator>> mComponents;
 };
 
 class Application
@@ -222,9 +289,13 @@ class Application
 public:
     Application()
         : mWindow(sf::VideoMode(sf::Vector2u(1600, 960), 32), "SFML works!", 
-                                sf::Style::Default, sf::ContextSettings(0, 0, 8))
+                                sf::Style::Default, sf::ContextSettings(0, 0, 8))        
     {
         mView = mWindow.getDefaultView();
+        mHUDView = mWindow.getDefaultView();       
+
+        mComponentPicker.AddComponent(std::make_unique<Wire>());
+        mComponentPicker.AddComponent(std::make_unique<LightBulb>());
     }
 
     void Run()
@@ -232,15 +303,15 @@ public:
         bool isMiddleButtonPressed = false;        
         sf::Vector2i lastPanPosition;        
         
-        Shape* tempShape = nullptr;
-        Node* selectedNode = nullptr;
-        ShapeType createShape = ShapeType::NONE;
+        Component* tempShape = nullptr;
+        Node* selectedNode = nullptr;        
 
         while (mWindow.isOpen())
         {
             sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
             float zoomIncrement = 0.0f;
             bool isLeftButtonJustReleased = false;
+            bool createShape = false;
 
             sf::Event event;
             while (mWindow.pollEvent(event))
@@ -290,25 +361,20 @@ public:
                 }
 
                 // Shapes
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::L))
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
                 {
-                    createShape = ShapeType::LINE;
+                    mComponentPicker.StepBack();
                 }
 
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::B))
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right))
                 {
-                    createShape = ShapeType::BOX;
+                    mComponentPicker.StepForward();
                 }
 
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::C))
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
                 {
-                    createShape = ShapeType::CIRCLE;
+                    createShape = true;
                 }
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
-                {
-                    createShape = ShapeType::CURVE;
-                }
-
             }            
 
             if (zoomIncrement != 0)
@@ -345,40 +411,10 @@ public:
             mCursor.x = nearestGridX;
             mCursor.y = nearestGridY;
 
-            if (createShape != ShapeType::NONE)
+            if (createShape)
             {
-                switch (createShape)
-                {
-                    case ShapeType::LINE:
-                    {
-                        tempShape = new Line();
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        break;
-                    }
-                    case ShapeType::BOX:
-                    {
-                        tempShape = new Box();
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        break;
-                    }
-                    case ShapeType::CIRCLE:
-                    {
-                        tempShape = new Circle();
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        break;
-                    }
-                    case ShapeType::CURVE:
-                    {
-                        tempShape = new Curve();
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        selectedNode = tempShape->GetNextNode(mCursor);
-                        break;
-                    }
-                }
-                createShape = ShapeType::NONE;
+                tempShape = mComponentPicker.NewComponent(mCursor);
+                selectedNode = tempShape->GetSelectedNode();
             }
 
             if (selectedNode != nullptr)
@@ -421,7 +457,7 @@ public:
                 }
             }
             
-            for (Shape* shape : mShapes)
+            for (Component* shape : mShapes)
             {
                 shape->DrawShape(mWindow);
                 shape->DrawNodes(mWindow);
@@ -435,6 +471,9 @@ public:
 
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
             
+            mWindow.setView(mHUDView);                      
+            mComponentPicker.Draw(mWindow);
+
             mWindow.display();           
         }
     }
@@ -446,14 +485,17 @@ private:
     }
 
     sf::RenderWindow mWindow;    
-    sf::View mView;    
+    sf::View mView;
+    sf::View mHUDView;
+
     float mZoomFactor = 1.0f;
     float mZoomSpeed = 0.1f;
     float mZoomMin = 0.3f;
     float mZoomMax = 1.7f;
     float mGridSpacing = 70.0f;
     sf::Vector2f mCursor;
-    std::vector<Shape*> mShapes;
+    std::vector<Component*> mShapes;
+    ComponentPicker mComponentPicker;
 };
 
 int main()
