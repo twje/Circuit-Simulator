@@ -18,7 +18,7 @@ public:
         return component;
     }
 
-    virtual void Move(const sf::Vector2f& cursor, float gridSpacing) override
+    virtual void Move(const sf::Vector2f& cursor) override
     {
         Node* node = GetSelectedNode();
         if (node != nullptr)
