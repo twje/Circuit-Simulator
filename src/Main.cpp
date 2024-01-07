@@ -300,20 +300,12 @@ public:
             
             for (Component* shape : mShapes)
             {
-                shape->DrawShape(mWindow);
-                shape->DrawNodes(mWindow);
-                shape->DrawConnectors(mWindow);
-                shape->DebugDraw(mWindow);
-                DrawFloatRect(mWindow, shape->GetGlobalBounds(mGridSpacing), sf::Color::Yellow);
+                shape->DrawComponent(mWindow);
             }
 
             if (tempShape != nullptr)
             {
-                tempShape->DrawShape(mWindow);
-                tempShape->DrawNodes(mWindow);
-                tempShape->DrawConnectors(mWindow);
-                tempShape->DebugDraw(mWindow);
-                DrawFloatRect(mWindow, tempShape->GetGlobalBounds(mGridSpacing), sf::Color::Yellow);
+                tempShape->DrawComponent(mWindow);
             }
 
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);

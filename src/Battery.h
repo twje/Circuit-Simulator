@@ -27,7 +27,7 @@ public:
         }
     }
 
-    virtual void DrawShape(sf::RenderTarget& target)
+    virtual void DrawComponent(sf::RenderTarget& target)
     {
         const sf::Vector2f& position1 = GetNode(0).GetPosition();
         const sf::Vector2f& position2 = GetNode(1).GetPosition();
@@ -36,7 +36,7 @@ public:
         sf::RectangleShape rectangle(size);
         rectangle.setPosition(position1);
         rectangle.setFillColor({ 0, 0, 0, 0 });
-        rectangle.setOutlineColor(GetColor());
+        rectangle.setOutlineColor(mColor);
         rectangle.setOutlineThickness(-1.f);
 
         target.draw(rectangle);

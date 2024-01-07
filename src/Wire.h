@@ -56,78 +56,15 @@ public:
         }
     }
 
-    virtual bool IsConnector(sf::Vector2f cursor) 
-    { 
-        sf::Vector2f position1 = GetNode(0).GetPosition();
-        sf::Vector2f position2 = GetNode(1).GetPosition();
-        sf::Vector2f direction = (position1 - position2).normalized() * mGridSpacing;
-
-        float steps = (position1 - position2).length() / mGridSpacing;
-        for (float step = 0; step <= steps; step++)
-        {
-            sf::Vector2f pin = position1 + (direction * step);
-            if (cursor.x == pin.x && cursor.y == pin.y)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    virtual bool IsConnectorConnectable(sf::Vector2f cursor) 
-    { 
-        for (Node& node : GetNodes())
-        {            
-            if (cursor.x == node.GetPosition().x && cursor.y == node.GetPosition().y)
-            {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    virtual sf::FloatRect GetGlobalBounds(float gridSpacing) override
-    {
-        sf::Vector2f position1 = GetNode(0).GetPosition();
-        sf::Vector2f position2 = GetNode(1).GetPosition();
-        float halfGridSpacing = gridSpacing / 2.0f;
-
-        // Hort line
-        if (position1.y == position2.y)
-        {
-            if (position1.x > position2.x)
-            {
-                SwapVectors(position1, position2);
-            }
-
-            float left = position1.x;
-            float top = position1.y - halfGridSpacing;
-            float right = position2.x;
-            float bottom = position2.y + halfGridSpacing;
-
-            return { { left, top }, { right - left, bottom - top } };
-        }
-        // Vert line
-        else
-        {
-            if (position1.y < position2.y)
-            {
-                SwapVectors(position1, position2);
-            }
-        }
-
-        return { };
-    }
-
-    virtual void DrawShape(sf::RenderTarget& target)
+    virtual void DrawComponent(sf::RenderTarget& target)
     {
         sf::Vertex line[] = {
             GetNode(0).GetPosition(),
             GetNode(1).GetPosition()
         };
 
-        line[0].color = GetColor();
-        line[1].color = GetColor();
+        line[0].color = mColor;
+        line[1].color = mColor; 
 
         target.draw(line, 2, sf::PrimitiveType::Lines);
     }
