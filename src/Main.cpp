@@ -6,6 +6,8 @@
 
 #include <SFML/Graphics.hpp>
 
+#include <iostream>
+
 class ComponentPreviewCreator : public sf::Transformable
 {
 public:
@@ -113,8 +115,8 @@ public:
         mView = mWindow.getDefaultView();
         mHUDView = mWindow.getDefaultView();       
 
-        mComponentPicker.AddComponent(std::make_unique<Wire>());
-        mComponentPicker.AddComponent(std::make_unique<LightBulb>());
+        mComponentPicker.AddComponent(std::make_unique<Wire>(mGridSpacing));
+        mComponentPicker.AddComponent(std::make_unique<LightBulb>(mGridSpacing));
         mComponentPicker.AddComponent(std::make_unique<Battery>());
     }
 
@@ -237,26 +239,45 @@ public:
                 selectedNode = tempShape->GetSelectedNode();
             }
 
+            ConnectionConnector connectionConnector;
             if (tempShape != nullptr)
             {
-                tempShape->Move(mCursor, mGridSpacing);
+                tempShape->Move(mCursor);
+                for (Component* component : mShapes)
+                {
+                    tempShape->CollectConnections(*component, connectionConnector);
+                }
+
+                if (connectionConnector.IsPlaceable())
+                {
+                    tempShape->SetColor(sf::Color::Magenta);
+                }
+                else
+                {
+                    tempShape->SetColor(sf::Color::Cyan);
+                }
             }
 
             if (isLeftButtonJustReleased)
             {
                 if (tempShape != nullptr)
                 {
+                    Node* previousNode = tempShape->GetSelectedNode();                    
                     selectedNode = tempShape->GetNextNode(mCursor);
+
                     if (selectedNode == nullptr)
                     {
-                        tempShape->SetColor(sf::Color::White);
-                        mShapes.push_back(tempShape);
-                        tempShape = nullptr;
+                        if (connectionConnector.IsPlaceable())
+                        {
+                            tempShape->SetColor(sf::Color::White);
+                            mShapes.push_back(tempShape);
+                            tempShape = nullptr;
+                        }
+                        else
+                        {
+                            selectedNode = previousNode;
+                        }
                     }
-                }
-                else
-                {
-                    selectedNode = nullptr;
                 }
             }
 
@@ -281,12 +302,18 @@ public:
             {
                 shape->DrawShape(mWindow);
                 shape->DrawNodes(mWindow);
+                shape->DrawConnectors(mWindow);
+                shape->DebugDraw(mWindow);
+                DrawFloatRect(mWindow, shape->GetGlobalBounds(mGridSpacing), sf::Color::Yellow);
             }
 
             if (tempShape != nullptr)
             {
                 tempShape->DrawShape(mWindow);
                 tempShape->DrawNodes(mWindow);
+                tempShape->DrawConnectors(mWindow);
+                tempShape->DebugDraw(mWindow);
+                DrawFloatRect(mWindow, tempShape->GetGlobalBounds(mGridSpacing), sf::Color::Yellow);
             }
 
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
