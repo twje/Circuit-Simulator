@@ -160,7 +160,7 @@ public:
 
     void SetColor(const sf::Color& color) { mColor = color; }    
 
-    void CollectConnections(Component& component, ConnectionConnector& outConnectionConnector)
+    void CollectConnections(Component& component, ConnectionConnector& outConnectionConnector) const
     {        
         for (const sf::Vector2f& pin0 : mPins)
         {
@@ -186,7 +186,7 @@ public:
         }
     }     
 
-    virtual Connector* GetConnectorAtPin(sf::Vector2f pin)
+    virtual Connector* GetConnectorAtPin(sf::Vector2f pin) const
     {
         for (auto& connectorPtr : mConnectors)
         {
