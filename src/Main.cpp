@@ -89,7 +89,7 @@ public:
         }
     }
 
-    Component* NewComponent(const sf::Vector2f& cursor, float gridSpacing)
+    Component* NewComponent(const sf::Vector2f& cursor, float gridSpacing) const
     {
         assert(mSelectedComponent.has_value() && mSelectedComponent < mComponents.size());
         return mComponents[mSelectedComponent.value()]->CreateShape(cursor, gridSpacing);
@@ -104,6 +104,70 @@ private:
     std::optional<size_t> mSelectedComponent;
     std::vector<std::unique_ptr<ComponentPreviewCreator>> mComponents;
 };
+
+class CircuitBoardDesigner
+{
+public:
+    void CreateComponent(const ComponentPicker& componentPicker, const sf::Vector2f& cursor, float gridSpacing)
+    {        
+        mNewComponent = componentPicker.NewComponent(cursor, gridSpacing);
+        mCntPin = mNewComponent->GetSelectedNode();
+    }
+
+    void MoveComponent(std::vector<Component*>& components, const sf::Vector2f& cursor)
+    {
+        mConnectionConnector.Reset();
+        if (mNewComponent != nullptr)
+        {
+            mNewComponent->Move(cursor);
+            for (Component* component : components)
+            {
+                mNewComponent->CollectConnections(*component, mConnectionConnector);
+            }
+
+            if (mConnectionConnector.IsPlaceable())
+            {
+                mNewComponent->SetColor(sf::Color::Magenta);
+            }
+            else
+            {
+                mNewComponent->SetColor(sf::Color::Cyan);
+            }
+        }
+    }
+
+    void TryPlaceComponent(std::vector<Component*>& components, const sf::Vector2f& cursor)
+    {        
+        if (mNewComponent != nullptr)
+        {
+            mPrvPin = mNewComponent->GetSelectedNode();
+            mCntPin = mNewComponent->GetNextNode(cursor);
+
+            if (mCntPin == nullptr)
+            {
+                if (mConnectionConnector.IsPlaceable())
+                {
+                    mNewComponent->SetColor(sf::Color::White);
+                    components.push_back(mNewComponent);
+                    mNewComponent = nullptr;
+                }
+                else
+                {
+                    mCntPin = mPrvPin;
+                }
+            }
+        }        
+    }    
+
+    Component* GetNewComponent() { return mNewComponent; }
+
+private:
+    ConnectionConnector mConnectionConnector;
+    Component* mNewComponent{ nullptr };
+    Node* mPrvPin{ nullptr };
+    Node* mCntPin{ nullptr };
+};
+
 
 class Application
 {
@@ -233,53 +297,18 @@ public:
             mCursor.x = nearestGridX;
             mCursor.y = nearestGridY;
 
+            // Manipulate component
             if (createShape)
             {
-                tempShape = mComponentPicker.NewComponent(mCursor, mGridSpacing);
-                selectedNode = tempShape->GetSelectedNode();
+                mCircuitBoardManipulator.CreateComponent(mComponentPicker, mCursor, mGridSpacing);
             }
 
-            ConnectionConnector connectionConnector;
-            if (tempShape != nullptr)
-            {
-                tempShape->Move(mCursor);
-                for (Component* component : mShapes)
-                {
-                    tempShape->CollectConnections(*component, connectionConnector);
-                }
-
-                if (connectionConnector.IsPlaceable())
-                {
-                    tempShape->SetColor(sf::Color::Magenta);
-                }
-                else
-                {
-                    tempShape->SetColor(sf::Color::Cyan);
-                }
-            }
+            mCircuitBoardManipulator.MoveComponent(mShapes, mCursor);
 
             if (isLeftButtonJustReleased)
             {
-                if (tempShape != nullptr)
-                {
-                    Node* previousNode = tempShape->GetSelectedNode();                    
-                    selectedNode = tempShape->GetNextNode(mCursor);
-
-                    if (selectedNode == nullptr)
-                    {
-                        if (connectionConnector.IsPlaceable())
-                        {
-                            tempShape->SetColor(sf::Color::White);
-                            mShapes.push_back(tempShape);
-                            tempShape = nullptr;
-                        }
-                        else
-                        {
-                            selectedNode = previousNode;
-                        }
-                    }
-                }
-            }
+                mCircuitBoardManipulator.TryPlaceComponent(mShapes, mCursor);
+            }            
 
             mWindow.setView(mView);
             mWindow.clear();
@@ -303,9 +332,9 @@ public:
                 shape->DrawComponent(mWindow);
             }
 
-            if (tempShape != nullptr)
+            if (mCircuitBoardManipulator.GetNewComponent())
             {
-                tempShape->DrawComponent(mWindow);
+                mCircuitBoardManipulator.GetNewComponent()->DrawComponent(mWindow);
             }
 
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
@@ -322,6 +351,8 @@ private:
     {
         return std::max(minValue, std::min(value, maxValue));
     }
+
+    CircuitBoardDesigner mCircuitBoardManipulator;
 
     sf::RenderWindow mWindow;    
     sf::View mView;
