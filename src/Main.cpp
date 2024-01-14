@@ -105,9 +105,43 @@ private:
     std::vector<std::unique_ptr<ComponentPreviewCreator>> mComponents;
 };
 
+class CircuitBoard
+{
+public:
+    ConnectionConnector CollectConnections(const Component* newComponent)
+    {
+        ConnectionConnector connectionConnector;
+        for (Component* component : mComponents)
+        {
+            newComponent->CollectConnections(*component, connectionConnector);
+        }
+        return connectionConnector;
+    }
+
+    void AddComponent(Component* component)
+    {
+        mComponents.push_back(component);
+    }
+
+    void Draw(sf::RenderTarget& target)
+    {
+        for (Component* component : mComponents)
+        {
+            component->DrawComponent(target);
+        }
+    }
+
+private:
+    std::vector<Component*> mComponents;
+};
+
 class CircuitBoardDesigner
 {
 public:
+    CircuitBoardDesigner(CircuitBoard& circuitBoard)
+        : mCircuitBoard(circuitBoard)
+    { }
+
     void CreateComponent(const ComponentPicker& componentPicker, const sf::Vector2f& cursor, float gridSpacing)
     {        
         mNewComponent = componentPicker.NewComponent(cursor, gridSpacing);
@@ -115,15 +149,12 @@ public:
     }
 
     void MoveComponent(std::vector<Component*>& components, const sf::Vector2f& cursor)
-    {
-        mConnectionConnector.Reset();
+    {        
         if (mNewComponent != nullptr)
         {
             mNewComponent->Move(cursor);
-            for (Component* component : components)
-            {
-                mNewComponent->CollectConnections(*component, mConnectionConnector);
-            }
+            
+            mConnectionConnector = mCircuitBoard.CollectConnections(mNewComponent);
 
             if (mConnectionConnector.IsPlaceable())
             {
@@ -147,7 +178,10 @@ public:
             {
                 if (mConnectionConnector.IsPlaceable())
                 {
+                    mConnectionConnector.Connect();
+
                     mNewComponent->SetColor(sf::Color::White);
+                    mCircuitBoard.AddComponent(mNewComponent);
                     components.push_back(mNewComponent);
                     mNewComponent = nullptr;
                 }
@@ -162,6 +196,7 @@ public:
     Component* GetNewComponent() { return mNewComponent; }
 
 private:
+    CircuitBoard& mCircuitBoard;
     ConnectionConnector mConnectionConnector;
     Component* mNewComponent{ nullptr };
     Node* mPrvPin{ nullptr };
@@ -182,6 +217,8 @@ public:
         mComponentPicker.AddComponent(std::make_unique<Wire>(sf::Vector2f(), mGridSpacing));
         mComponentPicker.AddComponent(std::make_unique<LightBulb>(mGridSpacing));
         mComponentPicker.AddComponent(std::make_unique<Battery>());
+
+        mCircuitBoardManipulator = std::make_unique<CircuitBoardDesigner>(mCircuitBoard);
     }
 
     void Run()
@@ -300,14 +337,14 @@ public:
             // Manipulate component
             if (createShape)
             {
-                mCircuitBoardManipulator.CreateComponent(mComponentPicker, mCursor, mGridSpacing);
+                mCircuitBoardManipulator->CreateComponent(mComponentPicker, mCursor, mGridSpacing);
             }
 
-            mCircuitBoardManipulator.MoveComponent(mShapes, mCursor);
+            mCircuitBoardManipulator->MoveComponent(mShapes, mCursor);
 
             if (isLeftButtonJustReleased)
             {
-                mCircuitBoardManipulator.TryPlaceComponent(mShapes, mCursor);
+                mCircuitBoardManipulator->TryPlaceComponent(mShapes, mCursor);
             }            
 
             mWindow.setView(mView);
@@ -326,15 +363,12 @@ public:
                     DrawPoint(mWindow, { gridX + topLeftWorld.x, gridY + topLeftWorld.y }, 3.0f, sf::Color::Green);
                 }
             }
-            
-            for (Component* shape : mShapes)
-            {
-                shape->DrawComponent(mWindow);
-            }
+                        
+            mCircuitBoard.Draw(mWindow);
 
-            if (mCircuitBoardManipulator.GetNewComponent())
+            if (mCircuitBoardManipulator->GetNewComponent())
             {
-                mCircuitBoardManipulator.GetNewComponent()->DrawComponent(mWindow);
+                mCircuitBoardManipulator->GetNewComponent()->DrawComponent(mWindow);
             }
 
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
@@ -352,7 +386,8 @@ private:
         return std::max(minValue, std::min(value, maxValue));
     }
 
-    CircuitBoardDesigner mCircuitBoardManipulator;
+    CircuitBoard mCircuitBoard;
+    std::unique_ptr<CircuitBoardDesigner> mCircuitBoardManipulator;
 
     sf::RenderWindow mWindow;    
     sf::View mView;
