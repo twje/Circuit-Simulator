@@ -3,6 +3,7 @@
 #include "DrawUtils.h"
 
 class Component;
+class Connection;
 
 class Node
 {
@@ -24,30 +25,58 @@ public:
     sf::Vector2f mPosition;
 };
 
-class Connection
-{
-
-};
-
 class Connector
 {
 public:
-    Connector(const sf::Vector2f position, bool isConnectable)
-        : mPosition(position)
-        , mIsConnectable(isConnectable)
-        , mColor(sf::Color::Red)
+    Connector(Component* component)
+        : mComponent(component)
     { }
 
     const sf::Vector2f& GetPosition() const { return mPosition; }
-    const sf::Color& GetColor() const { return mColor; }
-    
-    void SetPosition(const sf::Vector2f position) { mPosition = position; }
-    void SetColor(const sf::Color& color) { mColor = color; }
+    void SetPosition(const sf::Vector2f position) { mPosition = position; }    
+    void AddConnection(std::shared_ptr<Connection> connection) 
+    { 
+        mConnections.emplace_back(connection);
+    }    
+
+    std::vector<std::shared_ptr<Connection>>& GetConnections()
+    {
+        return mConnections;
+    }    
+
+    Component* GetComponent() { return mComponent; }
 
 private:
+    Component* mComponent;
+    std::vector<std::shared_ptr<Connection>> mConnections;    
     sf::Vector2f mPosition;
-    sf::Color mColor;
-    bool mIsConnectable;
+};
+
+class Connection
+{
+public:
+    Connection(Connector* sourceConnector, Connector* targetConnector)
+        : mSourceConnector(sourceConnector)
+        , mTargetConnector(targetConnector)
+    { }
+
+    Connector* GetOppositeConnector(Connector* connector)
+    {
+        if (mSourceConnector == connector)
+        {
+            return mTargetConnector;
+        }
+        return mSourceConnector;
+    }
+
+    bool IsComponentConnected(Component* component)
+    {
+        return (component == mSourceConnector->GetComponent()) || (component == mTargetConnector->GetComponent());
+    }
+
+private:
+    Connector* mSourceConnector;
+    Connector* mTargetConnector;
 };
 
 class ConnectionConnector
@@ -57,6 +86,19 @@ public:
         : mIsPlaceable(true)
     { }
 
+    void Connect()
+    {
+        for (const auto& connectorPair : mConnectorPairs)
+        {
+            Connector* sourceConnector = connectorPair.first;
+            Connector* targetConnector = connectorPair.second;
+
+            auto connection = std::make_shared<Connection>(sourceConnector, targetConnector);
+            sourceConnector->AddConnection(connection);
+            targetConnector->AddConnection(connection);
+        }
+    }
+
     void SetIsPlaceable(bool value) { mIsPlaceable = false; }
     bool IsPlaceable() { return mIsPlaceable; }
     
@@ -65,9 +107,15 @@ public:
         mConnectorPairs.push_back({ sourceConnector, targetConnector });
     }
 
+    void Reset()
+    {
+        mConnectorPairs.clear();
+        mIsPlaceable = true;
+    }
+
 private:
     bool mIsPlaceable;
-    std::vector<std::pair<Connector*, Connector*>> mConnectorPairs;
+    std::vector<std::pair<Connector*, Connector*>> mConnectorPairs;    
 };
 
 class Component
@@ -98,12 +146,18 @@ public:
 
     Node* GetSelectedNode() { return mSelectedNode; }
     Node& GetNode(size_t index) { return mNodes[index]; }
+    std::vector<Node>& GetNodes() { return mNodes; }
 
-    void AddConnector(Connector&& connector) 
+    void AddConnector()
     { 
-        mConnectors.emplace_back(std::move(connector));
+        mConnectors.emplace_back(std::make_unique<Connector>(this));
     }
      
+    const std::vector<std::unique_ptr<Connector>>& GetConnectors() const
+    { 
+        return mConnectors; 
+    }
+
     void SetColor(const sf::Color& color) { mColor = color; }    
 
     void CollectConnections(Component& component, ConnectionConnector& outConnectionConnector)
@@ -134,12 +188,12 @@ public:
 
     virtual Connector* GetConnectorAtPin(sf::Vector2f pin)
     {
-        for (Connector& connector : mConnectors)
+        for (auto& connectorPtr : mConnectors)
         {
-            sf::Vector2f position = connector.GetPosition();
+            sf::Vector2f position = connectorPtr->GetPosition();
             if (pin.x == position.x && pin.y == position.y)
             {
-                return &connector;
+                return connectorPtr.get();
             }
         }
         return nullptr;
@@ -154,7 +208,7 @@ public:
 
 protected:
     std::vector<sf::Vector2f> mPins;
-    std::vector<Connector> mConnectors;
+    std::vector<std::unique_ptr<Connector>> mConnectors;
     sf::Color mColor;
 
 private:    

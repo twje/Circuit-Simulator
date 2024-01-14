@@ -7,53 +7,27 @@
 class Wire : public Component
 {
 public:
-    Wire(float gridSpacing)
+    Wire(const sf::Vector2f& startPosition, float gridSpacing)
         : Component(2)
         , mGridSpacing(gridSpacing)
-    { }
+    { 
+        GetNextNode(startPosition);
+        GetNextNode(sf::Vector2f());
+
+        AddConnector();
+        AddConnector();
+    }
 
     virtual Component* CreateShape(const sf::Vector2f& cursor, float gridSpacing) const
     {
-        // Create shape
-        Wire* component = new Wire(gridSpacing);
-        component->GetNextNode(cursor);
-        component->GetNextNode(cursor);
-
-        // Create connectors
-        component->AddConnector({ cursor, true });
-        component->AddConnector({ cursor, true });
-
-        // Create pins
-        component->InitPins();
-
+        auto component = new Wire(cursor, gridSpacing);
+        component->UpdateComponent(cursor);
         return component;
     }
 
     virtual void Move(const sf::Vector2f& cursor) override
     {
-        if (GetSelectedNode() != nullptr)
-        {
-            sf::Vector2f offset;
-            sf::Vector2f position = GetNode(0).GetPosition(); // Start node
-
-            float hortLength = cursor.x - position.x;
-            float vertLength = cursor.y - position.y;
-
-            // Hort movement
-            if (std::abs(vertLength) > std::abs(hortLength))
-            {
-                offset.y = vertLength;
-            }
-            // Vert movement
-            else 
-            {
-                offset.x = hortLength;
-            }
-            
-            GetNode(1).SetPosition(position + offset);
-            mConnectors[1].SetPosition(position + offset);
-            InitPins();
-        }
+        UpdateComponent(cursor);
     }
 
     virtual void DrawComponent(sf::RenderTarget& target)
@@ -91,33 +65,78 @@ public:
 
     virtual void DebugDraw(sf::RenderTarget& target)
     {
-        for (const sf::Vector2f& pin : mPins)
-        {
-            DrawPoint(target, pin, 10, sf::Color::Yellow);
-        }
+        //for (auto& node : GetNodes())
+        //{
+        //    DrawPoint(target, node.GetPosition(), 10, sf::Color::Yellow);
+        //}
+
+        //for (auto connector : mConnectors)
+        //{
+        //    DrawPoint(target, connector.GetPosition(), 10, sf::Color::Yellow);
+        //}
+
+        //for (auto pin : mPins)
+        //{
+        //    DrawPoint(target, pin, 10, sf::Color::Yellow);
+        //}
     };
 
 private:
-    void InitPins()
+    void UpdateComponent(const sf::Vector2f& cursor)
+    {
+        UpdateNodePositions(cursor);
+        UpdateConnectorPositions(cursor);
+        UpdatePins(cursor);
+    }
+
+    void UpdateNodePositions(const sf::Vector2f& cursor)
+    {
+        sf::Vector2f offset;
+        sf::Vector2f position = GetNode(0).GetPosition();
+
+        float hortLength = cursor.x - position.x;
+        float vertLength = cursor.y - position.y;
+
+        // Hort movement
+        if (std::abs(vertLength) > std::abs(hortLength))
+        {
+            offset.y = vertLength;
+        }
+        // Vert movement
+        else
+        {
+            offset.x = hortLength;
+        }
+
+        GetNode(1).SetPosition(position + offset);
+    }
+
+    void UpdateConnectorPositions(const sf::Vector2f& cursor)
+    {
+        mConnectors[0]->SetPosition(GetNode(0).GetPosition());
+        mConnectors[1]->SetPosition(GetNode(1).GetPosition());
+    }
+
+    void UpdatePins(const sf::Vector2f& cursor)
     {
         mPins.clear();
 
-        sf::Vector2f position1 = GetNode(0).GetPosition();
-        sf::Vector2f position2 = GetNode(1).GetPosition();
-        if (position1 == position2)
+        sf::Vector2f position0 = GetNode(0).GetPosition();
+        sf::Vector2f position1 = GetNode(1).GetPosition();
+        if (position0 == position1)
         {
             return;
         }
-        
-        sf::Vector2f direction = (position2 - position1).normalized() * mGridSpacing;
 
-        float steps = (position1 - position2).length() / mGridSpacing;
+        sf::Vector2f direction = (position0 - position1).normalized() * mGridSpacing;
+
+        float steps = (position0 - position1).length() / mGridSpacing;
         for (float step = 0; step <= steps; step++)
         {
             sf::Vector2f pin = position1 + (direction * step);
             mPins.push_back(pin);
         }
-    }
+    }    
 
     void SwapVectors(sf::Vector2f& vector1, sf::Vector2f& vector2)
     {

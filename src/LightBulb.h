@@ -15,10 +15,10 @@ public:
         GetNextNode(sf::Vector2f());
         GetNextNode(sf::Vector2f());
         
-        AddConnector(Connector(sf::Vector2f(), true));
-        AddConnector(Connector(sf::Vector2f(), true));
-        AddConnector(Connector(sf::Vector2f(), true));
-        AddConnector(Connector(sf::Vector2f(), true));
+        AddConnector();
+        AddConnector();
+        AddConnector();
+        AddConnector();
     }
 
     virtual Component* CreateShape(const sf::Vector2f& cursor, float gridSpacing) const
@@ -97,7 +97,7 @@ private:
     {        
         for (size_t i = 0; i < mDirections.size(); ++i) 
         {
-            mConnectors[i].SetPosition(cursor + mDirections[i]);
+            mConnectors[i]->SetPosition(cursor + mDirections[i]);
         }
     }
 

@@ -115,7 +115,7 @@ public:
         mView = mWindow.getDefaultView();
         mHUDView = mWindow.getDefaultView();       
 
-        mComponentPicker.AddComponent(std::make_unique<Wire>(mGridSpacing));
+        mComponentPicker.AddComponent(std::make_unique<Wire>(sf::Vector2f(), mGridSpacing));
         mComponentPicker.AddComponent(std::make_unique<LightBulb>(mGridSpacing));
         mComponentPicker.AddComponent(std::make_unique<Battery>());
     }
