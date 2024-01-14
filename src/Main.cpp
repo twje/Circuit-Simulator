@@ -108,6 +108,10 @@ private:
 class CircuitBoard
 {
 public:
+    CircuitBoard()
+        : mPinCount(100, 100)
+    { }
+
     ConnectionConnector CollectConnections(const Component* newComponent)
     {
         ConnectionConnector connectionConnector;
@@ -136,8 +140,11 @@ public:
         }
     }
 
+    const sf::Vector2i& GetPinCount() { return mPinCount; }
+
 private:
     std::vector<Component*> mComponents;
+    sf::Vector2i mPinCount;
 };
 
 class CircuitBoardManipulator
@@ -228,8 +235,9 @@ private:
 class ViewController
 {
 public:
-    ViewController(sf::RenderWindow& window, sf::View& view)
+    ViewController(sf::RenderWindow& window, sf::View& view, sf::FloatRect bounds)
         : mWindow(window)
+        , mBounds(bounds)
         , mView(view)
         , mZoomFactor(1.0f)
         , mZoomSpeed(0.1f)
@@ -243,7 +251,7 @@ public:
     }
 
     void UpdatePan()
-    {
+    {        
         sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
 
         // Convert the last pan position and current mouse position to world coordinates
@@ -255,11 +263,30 @@ public:
         mView.move(panOffsetWorld);
 
         // Update the last pan position (in screen coordinates)
-        mLastPanPosition = mousePosition;
+        mLastPanPosition = mousePosition;     
     }
 
     void ZoomIn() { Zoom(-mZoomSpeed); }
     void ZoomOut() { Zoom(mZoomSpeed); }
+
+    sf::Vector2f MapPixelToCoords(sf::Vector2i pixel)
+    {        
+        return mWindow.mapPixelToCoords(pixel, mView);
+    }
+
+    void DrawDebug()
+    {
+        sf::RectangleShape shape;
+        shape.setPosition(mBounds.getPosition());
+        shape.setSize(mBounds.getSize());
+        shape.setFillColor(sf::Color::Transparent);
+        shape.setOutlineColor(sf::Color::Red);
+        shape.setOutlineThickness(-5);
+
+        mWindow.draw(shape);
+    }
+
+    const sf::FloatRect& GetBounds() const { return mBounds; }
 
 private:
     void Zoom(float zoomSpeed)
@@ -285,11 +312,12 @@ private:
 
     sf::RenderWindow& mWindow;
     sf::View& mView;
+    sf::FloatRect mBounds;
     float mZoomFactor;
     float mZoomSpeed;
     float mZoomMin;
     float mZoomMax;
-    sf::Vector2i mLastPanPosition;
+    sf::Vector2i mLastPanPosition;    
 };
 
 class Application
@@ -307,7 +335,11 @@ public:
         mComponentPicker.AddComponent(std::make_unique<Battery>());
 
         mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
-        mViewController = std::make_unique<ViewController>(mWindow, mView);
+        
+        sf::FloatRect bounds(sf::Vector2f(), 
+                             sf::Vector2f(mCircuitBoard.GetPinCount()) * mGridSpacing);
+
+        mViewController = std::make_unique<ViewController>(mWindow, mView, bounds);
     }
 
     void Run()
@@ -394,13 +426,7 @@ public:
                 mViewController->UpdatePan();
             }
 
-            sf::Vector2f worldMousePosition = mWindow.mapPixelToCoords(mousePosition, mView);
-
-            float nearestGridX = std::round(worldMousePosition.x / mGridSpacing) * mGridSpacing;
-            float nearestGridY = std::round(worldMousePosition.y / mGridSpacing) * mGridSpacing;
-
-            mCursor.x = nearestGridX;
-            mCursor.y = nearestGridY;
+            mCursor = GetNearestGridCoordinate(mousePosition);
 
             // Manipulate component
             if (createShape)
@@ -433,25 +459,29 @@ public:
             mWindow.setView(mView);
             mWindow.clear();
             
-            sf::Vector2f viewSize = mView.getSize();
-            sf::Vector2f topLeftWorld = mWindow.mapPixelToCoords({ 0, 0 }, mView);
+            const sf::FloatRect& bounds = mViewController->GetBounds();
+            sf::FloatRect viewBounds = sf::FloatRect(mView.getCenter() - mView.getSize() / 2.0f,
+                                                     mView.getSize());
 
-            topLeftWorld.x = std::floor(topLeftWorld.x / mGridSpacing) * mGridSpacing;
-            topLeftWorld.y = std::floor(topLeftWorld.y / mGridSpacing) * mGridSpacing;
-
-            for (size_t gridX = 0; gridX < viewSize.x + mGridSpacing; gridX += mGridSpacing)
+            for (float gridX = 0; gridX <= bounds.getSize().x; gridX += mGridSpacing)
             {
-                for (size_t gridY = 0; gridY < viewSize.y + mGridSpacing; gridY += mGridSpacing)
+                for (float gridY = 0; gridY <= bounds.getSize().y; gridY += mGridSpacing)
                 {
-                    DrawPoint(mWindow, { gridX + topLeftWorld.x, gridY + topLeftWorld.y }, 3.0f, sf::Color::Green);
+                    sf::Vector2f point(gridX, gridY);                    
+                    if (viewBounds.contains(point))
+                    {
+                        DrawPoint(mWindow, point, 3.0f, sf::Color::Green);
+                    }                    
                 }
             }
-                        
+
+            mViewController->DrawDebug();
             mCircuitBoard.Draw(mWindow);
             mCircuitBoardManipulator->Draw(mWindow);
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
             
-            mWindow.setView(mHUDView);                      
+            // DRAW BOUNDs            
+            mWindow.setView(mHUDView);
             mComponentPicker.Draw(mWindow);
 
             mWindow.display();           
@@ -459,6 +489,45 @@ public:
     }
 
 private:
+    sf::Vector2f GetGridCoordinateFromPinId(const sf::Vector2f& pinId)
+    {
+        const sf::FloatRect& bounds = mViewController->GetBounds();
+
+        // Convert pinId back to world coordinates
+        sf::Vector2f worldCoord;
+        worldCoord.x = pinId.x * mGridSpacing + bounds.left;
+        worldCoord.y = pinId.y * mGridSpacing + bounds.top;
+
+        // Ensure the world coordinates are clamped within the bounds
+        worldCoord.x = std::clamp(worldCoord.x, bounds.left, bounds.left + bounds.width);
+        worldCoord.y = std::clamp(worldCoord.y, bounds.top, bounds.top + bounds.height);
+
+        return worldCoord;
+    }
+
+    sf::Vector2f GetPinId(sf::Vector2i screenCoord)
+    {
+        sf::Vector2f nearestGridCoord = GetNearestGridCoordinate(screenCoord);        
+        const sf::FloatRect& bounds = mViewController->GetBounds();
+                
+        return (nearestGridCoord - bounds.getPosition()) / mGridSpacing;
+    }
+
+    sf::Vector2f GetNearestGridCoordinate(sf::Vector2i screenCoord)
+    {
+        const sf::FloatRect& bounds = mViewController->GetBounds();
+        sf::Vector2f worldMousePosition = mViewController->MapPixelToCoords(screenCoord);
+
+        float nearestGridX = std::round(worldMousePosition.x / mGridSpacing) * mGridSpacing;
+        float nearestGridY = std::round(worldMousePosition.y / mGridSpacing) * mGridSpacing;
+
+        // Clamping nearestGridX and nearestGridY within bounds
+        nearestGridX = std::clamp(nearestGridX, bounds.left, bounds.left + bounds.width);
+        nearestGridY = std::clamp(nearestGridY, bounds.top, bounds.top + bounds.height);
+
+        return { nearestGridX, nearestGridY };
+    }
+
     ComponentPicker mComponentPicker;
     CircuitBoard mCircuitBoard;
     std::unique_ptr<CircuitBoardManipulator> mCircuitBoardManipulator;
@@ -469,7 +538,7 @@ private:
     sf::View mHUDView;
 
     float mGridSpacing = 70.0f;
-    sf::Vector2f mCursor;
+    sf::Vector2f mCursor;    
 };
 
 int main()
