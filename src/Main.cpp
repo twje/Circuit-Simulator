@@ -140,10 +140,10 @@ private:
     std::vector<Component*> mComponents;
 };
 
-class CircuitBoardDesigner
+class CircuitBoardManipulator
 {
 public:
-    CircuitBoardDesigner(CircuitBoard& circuitBoard)
+    CircuitBoardManipulator(CircuitBoard& circuitBoard)
         : mCircuitBoard(circuitBoard)
     { }
 
@@ -225,6 +225,72 @@ private:
     Node* mCntPin{ nullptr };
 };
 
+class ViewController
+{
+public:
+    ViewController(sf::RenderWindow& window, sf::View& view)
+        : mWindow(window)
+        , mView(view)
+        , mZoomFactor(1.0f)
+        , mZoomSpeed(0.1f)
+        , mZoomMin(0.3f)
+        , mZoomMax(1.7f)
+    { }
+
+    void StartPan(const sf::Vector2i& mousePosition)
+    {
+        mLastPanPosition = mousePosition;
+    }
+
+    void UpdatePan()
+    {
+        sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
+
+        // Convert the last pan position and current mouse position to world coordinates
+        sf::Vector2f worldLastPanPosition = mWindow.mapPixelToCoords(mLastPanPosition, mView);
+        sf::Vector2f worldMousePosition = mWindow.mapPixelToCoords(mousePosition, mView);
+
+        // Calculate the pan offset in world coordinates
+        sf::Vector2f panOffsetWorld = worldLastPanPosition - worldMousePosition;
+        mView.move(panOffsetWorld);
+
+        // Update the last pan position (in screen coordinates)
+        mLastPanPosition = mousePosition;
+    }
+
+    void ZoomIn() { Zoom(-mZoomSpeed); }
+    void ZoomOut() { Zoom(mZoomSpeed); }
+
+private:
+    void Zoom(float zoomSpeed)
+    {
+        sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
+
+        // Zoom 
+        sf::Vector2f mouseWorldBeforeZoom = mWindow.mapPixelToCoords(mousePosition, mView);
+        mView.zoom(1.0f / mZoomFactor);  // Reset zoom factor to 1.0f
+        mZoomFactor = Clamp(mZoomFactor + zoomSpeed, mZoomMin, mZoomMax);
+        mView.zoom(mZoomFactor);
+
+        // Ensure same pixel is zoomed in/out on
+        sf::Vector2f mouseWorldAfterZoom = mWindow.mapPixelToCoords(mousePosition, mView);
+        sf::Vector2f adjustment = mouseWorldBeforeZoom - mouseWorldAfterZoom;
+        mView.move(adjustment);
+    }
+
+    float Clamp(float value, float minValue, float maxValue)
+    {
+        return std::max(minValue, std::min(value, maxValue));
+    }
+
+    sf::RenderWindow& mWindow;
+    sf::View& mView;
+    float mZoomFactor;
+    float mZoomSpeed;
+    float mZoomMin;
+    float mZoomMax;
+    sf::Vector2i mLastPanPosition;
+};
 
 class Application
 {
@@ -240,7 +306,8 @@ public:
         mComponentPicker.AddComponent(std::make_unique<LightBulb>(mGridSpacing));
         mComponentPicker.AddComponent(std::make_unique<Battery>());
 
-        mCircuitBoardManipulator = std::make_unique<CircuitBoardDesigner>(mCircuitBoard);
+        mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
+        mViewController = std::make_unique<ViewController>(mWindow, mView);
     }
 
     void Run()
@@ -256,7 +323,7 @@ public:
             sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
             float zoomIncrement = 0.0f;
             bool isLeftButtonJustReleased = false;
-            bool createShape = false;
+            bool createShape = false;      
 
             sf::Event event;
             while (mWindow.pollEvent(event))
@@ -270,10 +337,10 @@ public:
                 if (event.type == sf::Event::MouseButtonPressed)
                 {
                     if (event.mouseButton.button == sf::Mouse::Button::Middle)
-                    {
-                        lastPanPosition = mousePosition;
+                    {                
+                        mViewController->StartPan(mousePosition);
                         isMiddleButtonPressed = true;                        
-                    }                                       
+                    } 
                 }
 
                 if (event.type == sf::Event::MouseButtonReleased)
@@ -296,11 +363,11 @@ public:
                     {                                   
                         if (event.mouseWheelScroll.delta == 1)
                         {
-                            zoomIncrement = mZoomSpeed;
+                            mViewController->ZoomIn();
                         }
                         else if (event.mouseWheelScroll.delta == -1)
                         {
-                            zoomIncrement = -mZoomSpeed;
+                            mViewController->ZoomOut();                            
                         }   
                     }
                 }
@@ -322,30 +389,9 @@ public:
                 }
             }            
 
-            if (zoomIncrement != 0)
-            {
-                sf::Vector2f mouseWorldBeforeZoom = mWindow.mapPixelToCoords(mousePosition, mView);
-                mView.zoom(1.0f / mZoomFactor);  // Reset zoom factor to 1.0f
-                mZoomFactor = Clamp(mZoomFactor + zoomIncrement, mZoomMin, mZoomMax);
-                mView.zoom(mZoomFactor);
-
-                sf::Vector2f mouseWorldAfterZoom = mWindow.mapPixelToCoords(mousePosition, mView);
-                sf::Vector2f adjustment = mouseWorldBeforeZoom - mouseWorldAfterZoom;
-                mView.move(adjustment);
-            }
-
             if (isMiddleButtonPressed)
-            {          
-                // Convert the last pan position and current mouse position to world coordinates
-                sf::Vector2f worldLastPanPosition = mWindow.mapPixelToCoords(lastPanPosition, mView);
-                sf::Vector2f worldMousePosition = mWindow.mapPixelToCoords(mousePosition, mView);
-                
-                // Calculate the pan offset in world coordinates
-                sf::Vector2f panOffsetWorld = worldLastPanPosition - worldMousePosition;
-                mView.move(panOffsetWorld);
-
-                // Update the last pan position (in screen coordinates)
-                lastPanPosition = mousePosition;               
+            {
+                mViewController->UpdatePan();
             }
 
             sf::Vector2f worldMousePosition = mWindow.mapPixelToCoords(mousePosition, mView);
@@ -413,26 +459,17 @@ public:
     }
 
 private:
-    float Clamp(float value, float minValue, float maxValue) 
-    {
-        return std::max(minValue, std::min(value, maxValue));
-    }
-
+    ComponentPicker mComponentPicker;
     CircuitBoard mCircuitBoard;
-    std::unique_ptr<CircuitBoardDesigner> mCircuitBoardManipulator;
+    std::unique_ptr<CircuitBoardManipulator> mCircuitBoardManipulator;
+    std::unique_ptr<ViewController> mViewController;
 
     sf::RenderWindow mWindow;    
     sf::View mView;
     sf::View mHUDView;
 
-    float mZoomFactor = 1.0f;
-    float mZoomSpeed = 0.1f;
-    float mZoomMin = 0.3f;
-    float mZoomMax = 1.7f;
     float mGridSpacing = 70.0f;
     sf::Vector2f mCursor;
-    std::vector<Component*> mShapes;
-    ComponentPicker mComponentPicker;
 };
 
 int main()
