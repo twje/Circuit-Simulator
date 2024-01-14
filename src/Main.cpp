@@ -132,6 +132,8 @@ public:
         return mComponents.back();
     }
 
+    bool ContainsComponents() { return !mComponents.empty(); }
+
     void Draw(sf::RenderTarget& target)
     {
         for (Component* component : mComponents)
@@ -142,7 +144,7 @@ public:
 
     const sf::Vector2i& GetPinCount2D() const { return mPinCount; }
 
-    uint32_t GetPinCount() const { return mPinCount.x * mPinCount.y; }
+    uint32_t GetPinCount1D() const { return mPinCount.x * mPinCount.y; }
 
 private:
     std::vector<Component*> mComponents;
@@ -193,8 +195,8 @@ public:
             }
         }
 
-        if (mNewComponent == nullptr)
-        {
+        if (mNewComponent == nullptr && mCircuitBoard.ContainsComponents())
+        {            
             return mCircuitBoard.GetLastAddedComponent();
         }
         return nullptr;
@@ -338,9 +340,10 @@ public:
 
         mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
         
-        sf::FloatRect bounds(sf::Vector2f(), 
-                             sf::Vector2f(mCircuitBoard.GetPinCount2D()) * mGridSpacing);
-
+        sf::Vector2i pinCount = mCircuitBoard.GetPinCount2D();
+        sf::Vector2f size(static_cast<float>(pinCount.x - 1) * mGridSpacing,
+                          static_cast<float>(pinCount.y - 1) * mGridSpacing);        
+        sf::FloatRect bounds({ }, size);
         mViewController = std::make_unique<ViewController>(mWindow, mView, bounds);
     }
 
@@ -464,7 +467,7 @@ public:
             sf::FloatRect viewBounds = sf::FloatRect(mView.getCenter() - mView.getSize() / 2.0f,
                                                      mView.getSize());
 
-            for (uint32_t pinId = 0; pinId < mCircuitBoard.GetPinCount(); pinId++)
+            for (uint32_t pinId = 0; pinId < mCircuitBoard.GetPinCount1D(); pinId++)
             {
                 sf::Vector2f point = GetGridCoordinateFromPinId(pinId);
                 if (viewBounds.contains(point))
@@ -487,16 +490,20 @@ public:
     }
 
 private:
-    sf::Vector2f GetPinId(sf::Vector2i screenCoord)
+    uint32_t GetSurroundingPinId(uint32_t pinId, sf::Vector2i offset)
     {
-        sf::Vector2f nearestGridCoord = GetNearestGridCoordinate(screenCoord);
-        const sf::FloatRect& bounds = mViewController->GetBounds();
+        // Implement
+        return 0;
+    }
 
-        return (nearestGridCoord - bounds.getPosition()) / mGridSpacing;
+    uint32_t GetPinIdFromScreenCoord(sf::Vector2i screenCoord)
+    {
+        // Implement
+        return 0;
     }
 
     sf::Vector2f GetGridCoordinateFromPinId(uint32_t pinId)
-    {
+    {        
         uint32_t pinX = pinId / mCircuitBoard.GetPinCount2D().y;
         uint32_t pinY = pinId % mCircuitBoard.GetPinCount2D().y;
 
