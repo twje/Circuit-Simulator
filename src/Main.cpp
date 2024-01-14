@@ -140,7 +140,9 @@ public:
         }
     }
 
-    const sf::Vector2i& GetPinCount() { return mPinCount; }
+    const sf::Vector2i& GetPinCount2D() const { return mPinCount; }
+
+    uint32_t GetPinCount() const { return mPinCount.x * mPinCount.y; }
 
 private:
     std::vector<Component*> mComponents;
@@ -337,7 +339,7 @@ public:
         mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
         
         sf::FloatRect bounds(sf::Vector2f(), 
-                             sf::Vector2f(mCircuitBoard.GetPinCount()) * mGridSpacing);
+                             sf::Vector2f(mCircuitBoard.GetPinCount2D()) * mGridSpacing);
 
         mViewController = std::make_unique<ViewController>(mWindow, mView, bounds);
     }
@@ -458,20 +460,16 @@ public:
 
             mWindow.setView(mView);
             mWindow.clear();
-            
-            const sf::FloatRect& bounds = mViewController->GetBounds();
+                        
             sf::FloatRect viewBounds = sf::FloatRect(mView.getCenter() - mView.getSize() / 2.0f,
                                                      mView.getSize());
 
-            for (float gridX = 0; gridX <= bounds.getSize().x; gridX += mGridSpacing)
+            for (uint32_t pinId = 0; pinId < mCircuitBoard.GetPinCount(); pinId++)
             {
-                for (float gridY = 0; gridY <= bounds.getSize().y; gridY += mGridSpacing)
+                sf::Vector2f point = GetGridCoordinateFromPinId(pinId);
+                if (viewBounds.contains(point))
                 {
-                    sf::Vector2f point(gridX, gridY);                    
-                    if (viewBounds.contains(point))
-                    {
-                        DrawPoint(mWindow, point, 3.0f, sf::Color::Green);
-                    }                    
+                    DrawPoint(mWindow, point, 3.0f, sf::Color::Green);
                 }
             }
 
@@ -489,43 +487,44 @@ public:
     }
 
 private:
-    sf::Vector2f GetGridCoordinateFromPinId(const sf::Vector2f& pinId)
-    {
-        const sf::FloatRect& bounds = mViewController->GetBounds();
-
-        // Convert pinId back to world coordinates
-        sf::Vector2f worldCoord;
-        worldCoord.x = pinId.x * mGridSpacing + bounds.left;
-        worldCoord.y = pinId.y * mGridSpacing + bounds.top;
-
-        // Ensure the world coordinates are clamped within the bounds
-        worldCoord.x = std::clamp(worldCoord.x, bounds.left, bounds.left + bounds.width);
-        worldCoord.y = std::clamp(worldCoord.y, bounds.top, bounds.top + bounds.height);
-
-        return worldCoord;
-    }
-
     sf::Vector2f GetPinId(sf::Vector2i screenCoord)
     {
-        sf::Vector2f nearestGridCoord = GetNearestGridCoordinate(screenCoord);        
+        sf::Vector2f nearestGridCoord = GetNearestGridCoordinate(screenCoord);
         const sf::FloatRect& bounds = mViewController->GetBounds();
-                
+
         return (nearestGridCoord - bounds.getPosition()) / mGridSpacing;
     }
 
-    sf::Vector2f GetNearestGridCoordinate(sf::Vector2i screenCoord)
+    sf::Vector2f GetGridCoordinateFromPinId(uint32_t pinId)
     {
+        uint32_t pinX = pinId / mCircuitBoard.GetPinCount2D().y;
+        uint32_t pinY = pinId % mCircuitBoard.GetPinCount2D().y;
+
         const sf::FloatRect& bounds = mViewController->GetBounds();
+
+        // Convert pinId back to screen coordinates
+        sf::Vector2f screenCoord;
+        screenCoord.x = pinX * mGridSpacing + bounds.left;
+        screenCoord.y = pinY * mGridSpacing + bounds.top;
+
+        return ClampCoordinates(screenCoord, bounds);
+    }
+
+    sf::Vector2f GetNearestGridCoordinate(sf::Vector2i screenCoord)
+    {        
         sf::Vector2f worldMousePosition = mViewController->MapPixelToCoords(screenCoord);
 
         float nearestGridX = std::round(worldMousePosition.x / mGridSpacing) * mGridSpacing;
         float nearestGridY = std::round(worldMousePosition.y / mGridSpacing) * mGridSpacing;
+        sf::Vector2f nearestGridCoord(nearestGridX, nearestGridY);
 
-        // Clamping nearestGridX and nearestGridY within bounds
-        nearestGridX = std::clamp(nearestGridX, bounds.left, bounds.left + bounds.width);
-        nearestGridY = std::clamp(nearestGridY, bounds.top, bounds.top + bounds.height);
+        return ClampCoordinates(nearestGridCoord, mViewController->GetBounds());
+    }
 
-        return { nearestGridX, nearestGridY };
+    sf::Vector2f ClampCoordinates(const sf::Vector2f& coord, const sf::FloatRect& bounds) 
+    {
+        return { std::clamp(coord.x, bounds.left, bounds.left + bounds.width),
+                 std::clamp(coord.y, bounds.top, bounds.top + bounds.height) };
     }
 
     ComponentPicker mComponentPicker;
