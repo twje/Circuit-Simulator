@@ -123,6 +123,11 @@ public:
         mComponents.push_back(component);
     }
 
+    Component* GetLastAddedComponent()
+    {
+        return mComponents.back();
+    }
+
     void Draw(sf::RenderTarget& target)
     {
         for (Component* component : mComponents)
@@ -148,26 +153,16 @@ public:
         mCntPin = mNewComponent->GetSelectedNode();
     }
 
-    void MoveComponent(std::vector<Component*>& components, const sf::Vector2f& cursor)
+    void MoveComponent(const sf::Vector2f& cursor)
     {        
         if (mNewComponent != nullptr)
         {
             mNewComponent->Move(cursor);
-            
             mConnectionConnector = mCircuitBoard.CollectConnections(mNewComponent);
-
-            if (mConnectionConnector.IsPlaceable())
-            {
-                mNewComponent->SetColor(sf::Color::Magenta);
-            }
-            else
-            {
-                mNewComponent->SetColor(sf::Color::Cyan);
-            }
         }
     }
 
-    void TryPlaceComponent(std::vector<Component*>& components, const sf::Vector2f& cursor)
+    Component* TryPlaceComponent(const sf::Vector2f& cursor)
     {        
         if (mNewComponent != nullptr)
         {
@@ -178,11 +173,8 @@ public:
             {
                 if (mConnectionConnector.IsPlaceable())
                 {
-                    mConnectionConnector.Connect();
-
-                    mNewComponent->SetColor(sf::Color::White);
+                    mConnectionConnector.Connect();                                        
                     mCircuitBoard.AddComponent(mNewComponent);
-                    components.push_back(mNewComponent);
                     mNewComponent = nullptr;
                 }
                 else
@@ -190,10 +182,40 @@ public:
                     mCntPin = mPrvPin;
                 }
             }
-        }        
+        }
+
+        if (mNewComponent == nullptr)
+        {
+            return mCircuitBoard.GetLastAddedComponent();
+        }
+        return nullptr;
     }    
 
-    Component* GetNewComponent() { return mNewComponent; }
+    void Draw(sf::RenderTarget& target)
+    {
+        if (mNewComponent)
+        {
+            mNewComponent->DrawComponent(target);
+        }
+    }    
+
+    void SetComponentColor(const sf::Color& color)
+    {
+        if (mNewComponent)
+        {
+            mNewComponent->SetColor(color);
+        }
+    }
+
+    bool IsManipulatingComponent() 
+    { 
+        return mNewComponent != nullptr;  
+    }
+    
+    bool IsComponentPlaceable() 
+    { 
+        return mConnectionConnector.IsPlaceable(); 
+    }
 
 private:
     CircuitBoard& mCircuitBoard;
@@ -340,12 +362,27 @@ public:
                 mCircuitBoardManipulator->CreateComponent(mComponentPicker, mCursor, mGridSpacing);
             }
 
-            mCircuitBoardManipulator->MoveComponent(mShapes, mCursor);
+            mCircuitBoardManipulator->MoveComponent(mCursor);
+
+            if (mCircuitBoardManipulator->IsManipulatingComponent())
+            {
+                if (mCircuitBoardManipulator->IsComponentPlaceable())
+                {
+                    mCircuitBoardManipulator->SetComponentColor(sf::Color::Magenta);
+                }
+                else
+                {
+                    mCircuitBoardManipulator->SetComponentColor(sf::Color::Cyan);
+                }
+            }
 
             if (isLeftButtonJustReleased)
             {
-                mCircuitBoardManipulator->TryPlaceComponent(mShapes, mCursor);
-            }            
+                if (Component* component = mCircuitBoardManipulator->TryPlaceComponent(mCursor))
+                {
+                    component->SetColor(sf::Color::White);
+                }
+            }
 
             mWindow.setView(mView);
             mWindow.clear();
@@ -365,12 +402,7 @@ public:
             }
                         
             mCircuitBoard.Draw(mWindow);
-
-            if (mCircuitBoardManipulator->GetNewComponent())
-            {
-                mCircuitBoardManipulator->GetNewComponent()->DrawComponent(mWindow);
-            }
-
+            mCircuitBoardManipulator->Draw(mWindow);
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
             
             mWindow.setView(mHUDView);                      
