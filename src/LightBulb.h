@@ -3,34 +3,40 @@
 #include "Component.h"
 
 #include <vector>
+#include <iostream>
+#include <unordered_map>
 
 class LightBulb : public Component
 {
 public:
-    LightBulb(float gridSpacing)
-        : Component(2)
-        , mGridSpacing(gridSpacing)
-        , mDirections({ {-gridSpacing, 0}, {0, -gridSpacing}, {gridSpacing, 0}, {0, gridSpacing} })
+    LightBulb(ICircuitBoardNavigator& navigator)
+        : Component(navigator, 2)
     { 
         GetNextNode(sf::Vector2f());
         GetNextNode(sf::Vector2f());
         
-        AddConnector();
-        AddConnector();
-        AddConnector();
-        AddConnector();
+        AddComponentPin(true);   // 0
+        AddComponentPin(true);   // 1
+        AddComponentPin(true);   // 2
+        AddComponentPin(true);   // 3
+        AddComponentPin(false);  // 4
+
+        mDirectionsMap[0] = { -1, 0 };
+        mDirectionsMap[1] = { 0, -1 };
+        mDirectionsMap[2] = { 1, 0 };
+        mDirectionsMap[3] = { 0, 1 };
     }
 
-    virtual Component* CreateShape(const sf::Vector2f& cursor, float gridSpacing) const
+    virtual Component* CreateShape(ICircuitBoardNavigator& navigator) const
     {
-        auto component = new LightBulb(gridSpacing);
-        component->UpdateComponent(cursor);
+        auto component = new LightBulb(navigator);
+        component->UpdateComponent();
         return component;
     }
 
-    virtual void Move(const sf::Vector2f& cursor) override
+    virtual void Move() override
     {
-        UpdateComponent(cursor);
+        UpdateComponent();
     }
 
     virtual void DrawComponent(sf::RenderTarget& target)
@@ -71,46 +77,33 @@ public:
         target.draw(circle, states);
     } 
 
-    virtual void DebugDraw(sf::RenderTarget& target)
-    {
-        for (const sf::Vector2f& pin : mPins)
-        {
-            DrawPoint(target, pin, 10, sf::Color::Yellow);
-        }
-    };
-
 private:
-    void UpdateComponent(const sf::Vector2f& cursor)
-    {
-        UpdateNodePositions(cursor);
-        UpdateConnectorPositions(cursor);
-        UpdatePins(cursor);
-    }
-
-    void UpdateNodePositions(const sf::Vector2f& cursor)
-    {
-        GetNode(0).SetPosition(cursor);
-        GetNode(1).SetPosition({ cursor.x + mGridSpacing, cursor.y });
-    }
-
-    void UpdateConnectorPositions(const sf::Vector2f& cursor)
-    {        
-        for (size_t i = 0; i < mDirections.size(); ++i) 
+    void UpdateComponent()
+    {              
+        // Clamp to circuit board
+        Pin* selectedPin = &GetCircuitBoardPinAtCursor();
+        for (const auto& pair : mDirectionsMap)
         {
-            mConnectors[i]->SetPosition(cursor + mDirections[i]);
+            if (!GetNeighborCircuitBoardPin(*selectedPin, pair.second))
+            {
+                selectedPin = GetNeighborCircuitBoardPin(*selectedPin, -pair.second);
+                assert(selectedPin);
+            }
         }
-    }
-
-    void UpdatePins(const sf::Vector2f& cursor)
-    {
-        mPins.clear();        
-        for (const auto& dir : mDirections)
+        
+        // Associate circuit board pins
+        for (const auto& pair : mDirectionsMap)
         {
-            mPins.push_back(cursor + dir);
-        }
-        mPins.push_back(GetNode(0).GetPosition());
-    }
+            Pin* circuitBoardPin = GetNeighborCircuitBoardPin(*selectedPin, pair.second);
+            AssociateComponentWithCircuitBoardPin(pair.first, circuitBoardPin);
+        } 
+        AssociateComponentWithCircuitBoardPin(4, selectedPin);
 
-    float mGridSpacing;
-    std::vector<sf::Vector2f> mDirections;
+        // Update node positions
+        GetNode(0).SetPosition(GetCircuitBoardPinPosition(4));
+        GetNode(1).SetPosition(GetCircuitBoardPinPosition(0));
+    }
+   
+private:
+    std::unordered_map<uint32_t, sf::Vector2i> mDirectionsMap;
 };

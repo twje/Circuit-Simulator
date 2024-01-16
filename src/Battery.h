@@ -2,6 +2,7 @@
 
 #include "Component.h"
 
+/*
 class Battery : public Component
 {
 public:
@@ -9,7 +10,7 @@ public:
         : Component(2)
     { }
 
-    virtual Component* CreateShape(const sf::Vector2f& cursor, float gridSpacing) const
+    virtual Component* CreateShape(ICircuitBoardNavigator& navigator, const sf::Vector2f& cursor, float gridSpacing) const
     {
         Component* component = new Battery();
         component->GetNextNode(cursor);
@@ -55,3 +56,4 @@ public:
         target.draw(rectangle, states);
     }
 };
+*/

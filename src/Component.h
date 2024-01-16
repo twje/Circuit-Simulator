@@ -1,6 +1,8 @@
 #pragma once
 
 #include "DrawUtils.h"
+#include "Interfaces.h"
+
 
 class Component;
 class Connection;
@@ -118,13 +120,49 @@ private:
     std::vector<std::pair<Connector*, Connector*>> mConnectorPairs;    
 };
 
+class Pin
+{
+public:
+    Pin(uint32_t id)
+        : mId(id)
+    { }
+
+    uint32_t GetId() { return mId; }
+
+private:
+    uint32_t mId;
+};
+
+class ComponentPin
+{
+public:
+    ComponentPin(uint32_t id, bool isConnectable)
+        : mPin(id)
+        , mTemporaryConnectionPin(nullptr)
+        , mIsConnectable(isConnectable)
+    { }
+
+    // Getters
+    Pin* GetTemporaryConnectionPin() { return mTemporaryConnectionPin; }
+    bool IsConnectable() { return mIsConnectable; }
+
+    // Setters
+    void SetTemporaryConnectionPin(Pin* pin) { mTemporaryConnectionPin = pin; }
+
+private:
+    Pin mPin;
+    Pin* mTemporaryConnectionPin;
+    bool mIsConnectable;
+};
+
 class Component
 {
 public:
     virtual ~Component() = default;
 
-    Component(size_t maxNodes)
-        : mMaxNodes(maxNodes)
+    Component(ICircuitBoardNavigator& navigator, size_t maxNodes)
+        : mNavigator(navigator)
+        , mMaxNodes(maxNodes)
         , mColor(sf::Color::Green)
     {
         mNodes.reserve(maxNodes);
@@ -148,20 +186,11 @@ public:
     Node& GetNode(size_t index) { return mNodes[index]; }
     std::vector<Node>& GetNodes() { return mNodes; }
 
-    void AddConnector()
-    { 
-        mConnectors.emplace_back(std::make_unique<Connector>(this));
-    }
-     
-    const std::vector<std::unique_ptr<Connector>>& GetConnectors() const
-    { 
-        return mConnectors; 
-    }
-
     void SetColor(const sf::Color& color) { mColor = color; }    
 
     void CollectConnections(Component& component, ConnectionConnector& outConnectionConnector) const
-    {        
+    {   
+        /*
         for (const sf::Vector2f& pin0 : mPins)
         {
             for (const sf::Vector2f& pin1 : component.mPins)
@@ -184,10 +213,14 @@ public:
                 }
             }
         }
+        */
     }     
 
     virtual Connector* GetConnectorAtPin(sf::Vector2f pin) const
     {
+        return nullptr;
+
+        /*
         for (auto& connectorPtr : mConnectors)
         {
             sf::Vector2f position = connectorPtr->GetPosition();
@@ -197,21 +230,57 @@ public:
             }
         }
         return nullptr;
-    }    
+        */
+    }
 
-    virtual Component* CreateShape(const sf::Vector2f& cursor, float gridSpacing) const = 0;
-    virtual void Move(const sf::Vector2f& cursor) = 0;
+    virtual Component* CreateShape(ICircuitBoardNavigator& navigator) const = 0;
     
+    // 
+    virtual void Move() = 0;
+    
+    // Draing
     virtual void DrawComponent(sf::RenderTarget& target) = 0;
     virtual void DrawIcon(sf::RenderTarget& target, const sf::Transform& transform, const sf::FloatRect& localBounds) = 0;
     virtual void DebugDraw(sf::RenderTarget& target) { };
 
 protected:
-    std::vector<sf::Vector2f> mPins;
-    std::vector<std::unique_ptr<Connector>> mConnectors;
+    void AddComponentPin(bool connectable)
+    {
+        uint32_t pinId = mPins.size();
+        mPins.push_back(ComponentPin(pinId, connectable));
+    }
+
+    ComponentPin& GetComponentPin(uint32_t componentPinId)
+    { 
+        return mPins.at(componentPinId);
+    }
+
+    void AssociateComponentWithCircuitBoardPin(uint32_t componentPinId, Pin* circuitBoardPin)
+    {
+        mPins.at(componentPinId).SetTemporaryConnectionPin(circuitBoardPin);
+    }
+
+    const sf::Vector2f& GetCircuitBoardPinPosition(uint32_t componentPinId)
+    {
+        Pin* temporaryConnectionPin = GetComponentPin(componentPinId).GetTemporaryConnectionPin();
+        return mNavigator.GetGridCoordinateFromPin(*temporaryConnectionPin);
+    }
+
+    Pin* GetNeighborCircuitBoardPin(Pin& circuitBoardPin, const sf::Vector2i& neighborOffset)
+    {
+        return mNavigator.GetSurroundingPin(circuitBoardPin, neighborOffset);
+    }
+
+    Pin& GetCircuitBoardPinAtCursor()
+    {
+        return mNavigator.GetSelectedPin();
+    }
+
     sf::Color mColor;
 
-private:    
+private:
+    ICircuitBoardNavigator& mNavigator;
+    std::vector<ComponentPin> mPins;
     std::vector<Node> mNodes;    
     Node* mSelectedNode{ nullptr };
     size_t mMaxNodes;

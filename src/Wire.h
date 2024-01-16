@@ -4,6 +4,7 @@
 
 #include <iostream>
 
+/*
 class Wire : public Component
 {
 public:
@@ -18,7 +19,7 @@ public:
         AddConnector();
     }
 
-    virtual Component* CreateShape(const sf::Vector2f& cursor, float gridSpacing) const
+    virtual Component* CreateShape(ICircuitBoardNavigator& navigator, const sf::Vector2f& cursor, float gridSpacing) const
     {
         auto component = new Wire(cursor, gridSpacing);
         component->UpdateComponent(cursor);
@@ -147,3 +148,4 @@ private:
 
     float mGridSpacing;    
 };
+*/
