@@ -106,16 +106,25 @@ private:
     std::vector<std::unique_ptr<ComponentPreviewCreator>> mComponents;
 };
 
-class CircuitBoard
+class CircuitBoard : public ICircuitBoardNavigator
 {
 public:
     CircuitBoard()
-        : mPinCount(100, 100)        
-    { 
-        for (uint32_t pinId = 0; pinId < GetPinCount1D(); pinId++)
+        : mSelectedPin(nullptr)
+        , mGrid(10, 10)
+        , mGridSpacing(25)
+    {
+        assert(mGrid.x > 1 && mGrid.y > 1);
+        for (uint32_t index = 0; index < TotalPins(); index++)
         {
-            mPins.emplace_back(pinId);
+            mPins.emplace_back(index);
         }
+        mSelectedPin = &mPins.at(0);
+    }
+
+    void AddComponent(Component* component)
+    {
+        mComponents.push_back(component);
     }
 
     ConnectionConnector CollectConnections(const Component* newComponent)
@@ -128,36 +137,85 @@ public:
         return connectionConnector;
     }
 
-    void AddComponent(Component* component)
+    void UpdateSelectedPin(sf::Vector2f cursorWorldCoord)
     {
-        mComponents.push_back(component);
-    }
+        float nearestGridX = std::round(cursorWorldCoord.x / mGridSpacing) * mGridSpacing;
+        float nearestGridY = std::round(cursorWorldCoord.y / mGridSpacing) * mGridSpacing;
 
-    Component* GetLastAddedComponent()
-    {
-        return mComponents.back();
-    }
+        nearestGridX = std::clamp(nearestGridX, 0.0f, (mGrid.x - 1) * mGridSpacing);
+        nearestGridY = std::clamp(nearestGridY, 0.0f, (mGrid.y - 1) * mGridSpacing);
 
-    bool ContainsComponents() { return !mComponents.empty(); }
+        uint32_t indexX = nearestGridX / mGridSpacing;
+        uint32_t indexY = nearestGridY / mGridSpacing;
+
+        mSelectedPin = &mPins.at(Get1DPinIndex(indexX, indexY));
+    }
 
     void Draw(sf::RenderTarget& target)
     {
-        for (Component* component : mComponents)
+        for (uint32_t indexY = 0; indexY < mGrid.y; indexY++)
         {
-            component->DrawComponent(target);            
+            for (uint32_t indexX = 0; indexX < mGrid.x; indexX++)
+            {
+                sf::Vector2f position = sf::Vector2f(indexX, indexY) * mGridSpacing;
+                DrawPoint(target, position, 4, sf::Color::Cyan);
+            }
+        }
+
+
+
+        if (mSelectedPin)
+        {
+            DrawPoint(target, GetGridCoordinateFromPin(*mSelectedPin), 4, sf::Color::White);
         }
     }
 
-    const sf::Vector2i& GetPinCount2D() const { return mPinCount; }
-
-    uint32_t GetPinCount1D() const { return mPinCount.x * mPinCount.y; }
-
-    Pin& GetPin(uint32_t id) { return mPins.at(id); }
-
 private:
+    // ICircuitBoardNavigator interface
+    virtual Pin& GetSelectedPin()
+    {
+        return *mSelectedPin;
+    }
+
+    virtual Pin* GetSurroundingPin(Pin& pin, sf::Vector2i offset)  // rename to neahbor
+    {
+        sf::Vector2i newIndex = sf::Vector2i(Get2DPinIndex(pin.GetId()));
+        newIndex += offset;
+        if (newIndex.x < 0 || newIndex.x >= mGrid.x || newIndex.y < 0 || newIndex.y >= mGrid.y)
+        {
+            return nullptr;
+        }
+        return &mPins.at(Get1DPinIndex(static_cast<uint32_t>(newIndex.x), static_cast<uint32_t>(newIndex.y)));
+    }
+
+    virtual sf::Vector2f GetGridCoordinateFromPin(Pin& pin)
+    {
+        sf::Vector2u index = Get2DPinIndex(pin.GetId());
+        return sf::Vector2f(index) * mGridSpacing;
+    }
+
+    uint32_t Get1DPinIndex(uint32_t xIndex, uint32_t yIndex)
+    {
+        return xIndex + yIndex * mGrid.x;
+    }
+
+    sf::Vector2u Get2DPinIndex(uint32_t index)
+    {
+        uint32_t xIndex = index % mGrid.y;
+        uint32_t yIndex = index / mGrid.y;
+        return { xIndex, yIndex };
+    }
+
+    uint32_t TotalPins()
+    {
+        return mGrid.x * mGrid.y;
+    }
+
     std::vector<Component*> mComponents;
+    Pin* mSelectedPin;
     std::vector<Pin> mPins;
-    sf::Vector2i mPinCount;
+    sf::Vector2i mGrid;
+    float mGridSpacing;
 };
 
 class CircuitBoardManipulator
@@ -184,6 +242,8 @@ public:
 
     Component* TryPlaceComponent(const sf::Vector2f& cursor)
     {        
+        Component* placedComponent = nullptr;
+
         if (mNewComponent != nullptr)
         {
             mPrvPin = mNewComponent->GetSelectedNode();
@@ -193,9 +253,10 @@ public:
             {
                 if (mConnectionConnector.IsPlaceable())
                 {
+                    placedComponent = mNewComponent;
                     mConnectionConnector.Connect();                                        
                     mCircuitBoard.AddComponent(mNewComponent);
-                    mNewComponent = nullptr;
+                    mNewComponent = nullptr;                    
                 }
                 else
                 {
@@ -204,11 +265,7 @@ public:
             }
         }
 
-        if (mNewComponent == nullptr && mCircuitBoard.ContainsComponents())
-        {            
-            return mCircuitBoard.GetLastAddedComponent();
-        }
-        return nullptr;
+        return placedComponent;
     }    
 
     void Draw(sf::RenderTarget& target)
@@ -246,12 +303,13 @@ private:
     Node* mCntPin{ nullptr };
 };
 
+
+
 class ViewController
 {
 public:
-    ViewController(sf::RenderWindow& window, sf::View& view, sf::FloatRect bounds)
+    ViewController(sf::RenderWindow& window, sf::View& view)
         : mWindow(window)
-        , mBounds(bounds)
         , mView(view)
         , mZoomFactor(1.0f)
         , mZoomSpeed(0.1f)
@@ -288,20 +346,6 @@ public:
         return mWindow.mapPixelToCoords(pixel, mView);
     }
 
-    void DrawDebug()
-    {
-        sf::RectangleShape shape;
-        shape.setPosition(mBounds.getPosition());
-        shape.setSize(mBounds.getSize());
-        shape.setFillColor(sf::Color::Transparent);
-        shape.setOutlineColor(sf::Color::Red);
-        shape.setOutlineThickness(-5);
-
-        mWindow.draw(shape);
-    }
-
-    const sf::FloatRect& GetBounds() const { return mBounds; }
-
 private:
     void Zoom(float zoomSpeed)
     {
@@ -326,7 +370,6 @@ private:
 
     sf::RenderWindow& mWindow;
     sf::View& mView;
-    sf::FloatRect mBounds;
     float mZoomFactor;
     float mZoomSpeed;
     float mZoomMin;
@@ -334,7 +377,7 @@ private:
     sf::Vector2i mLastPanPosition;    
 };
 
-class Application : public ICircuitBoardNavigator
+class Application
 {
 public:
     Application()
@@ -346,16 +389,11 @@ public:
         mHUDView = mWindow.getDefaultView();       
 
         //mComponentPicker.AddComponent(std::make_unique<Wire>(sf::Vector2f(), mGridSpacing));
-        mComponentPicker.AddComponent(std::make_unique<LightBulb>(*this));
+        mComponentPicker.AddComponent(std::make_unique<LightBulb>(mCircuitBoard));
         //mComponentPicker.AddComponent(std::make_unique<Battery>());
 
         mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
-        
-        sf::Vector2i pinCount = mCircuitBoard.GetPinCount2D();
-        sf::Vector2f size(static_cast<float>(pinCount.x - 1) * mGridSpacing,
-                          static_cast<float>(pinCount.y - 1) * mGridSpacing);        
-        sf::FloatRect bounds({ }, size);
-        mViewController = std::make_unique<ViewController>(mWindow, mView, bounds);
+        mViewController = std::make_unique<ViewController>(mWindow, mView);
     }
 
     void Run()
@@ -442,12 +480,12 @@ public:
                 mViewController->UpdatePan();
             }
 
-            mCursor = GetNearestGridCoordinate(mousePosition);
+            //mCursor = GetNearestGridCoordinate(mousePosition);
 
             // Manipulate component
             if (createShape)
             {
-                mCircuitBoardManipulator->CreateComponent(*this, mComponentPicker);
+                mCircuitBoardManipulator->CreateComponent(mCircuitBoard, mComponentPicker);
             }
 
             mCircuitBoardManipulator->MoveComponent();
@@ -477,106 +515,25 @@ public:
                         
             sf::FloatRect viewBounds = sf::FloatRect(mView.getCenter() - mView.getSize() / 2.0f,
                                                      mView.getSize());
-
-            for (uint32_t pinId = 0; pinId < mCircuitBoard.GetPinCount1D(); pinId++)
-            {
-                sf::Vector2f point = GetGridCoordinateFromPinId(pinId);
-                if (viewBounds.contains(point))
-                {
-                    DrawPoint(mWindow, point, 3.0f, sf::Color::Green);
-                }
-            }
-
-            mViewController->DrawDebug();
+            
+            
             mCircuitBoard.Draw(mWindow);
             mCircuitBoardManipulator->Draw(mWindow);
             DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
             
+            sf::Vector2f cursorWorldCoord = mViewController->MapPixelToCoords(mousePosition);
+            mCircuitBoard.UpdateSelectedPin(cursorWorldCoord);
+            mCircuitBoard.Draw(mWindow);
+
             // DRAW BOUNDs            
             mWindow.setView(mHUDView);
             mComponentPicker.Draw(mWindow);
 
-            mWindow.display();     
-
-
-            sf::Vector2f coord = GetGridCoordinateFromPinId(1);
-            std::cout << coord.x << ", " << coord.y << std::endl;
+            mWindow.display();                 
         }
     }
 
-private:
-    // ICircuitBoardNavigator interface
-    virtual Pin* GetSurroundingPin(Pin& pin, sf::Vector2i offset) override
-    {
-        const sf::FloatRect& bounds = mViewController->GetBounds();
-        sf::Vector2f distance = GetGridCoordinateFromPin(pin) - bounds.getPosition();
-
-        int32_t pinX = offset.x + (distance.x / mGridSpacing);
-        int32_t pinY = offset.y + (distance.y / mGridSpacing);        
-
-        sf::Vector2i pinCount = mCircuitBoard.GetPinCount2D();
-
-        if (pinX < 0 || pinX >= pinCount.x || pinY < 0 || pinY >= pinCount.y)
-        {
-            return nullptr;
-        }
-
-        uint32_t id = pinX + pinY * pinCount.y;
-        return &mCircuitBoard.GetPin(id);
-    }
-    
-    virtual Pin& GetSelectedPin() override
-    {
-        sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
-        sf::Vector2f cursor = GetNearestGridCoordinate(mousePosition);
-
-        const sf::FloatRect& bounds = mViewController->GetBounds();
-        sf::Vector2f distanceToOrigin = cursor - bounds.getPosition();
-
-        uint32_t pinX = distanceToOrigin.x / mGridSpacing;
-        uint32_t pinY = distanceToOrigin.y / mGridSpacing;        
-        uint32_t id = pinX + pinY * mCircuitBoard.GetPinCount2D().y;
-        
-        return mCircuitBoard.GetPin(id);
-    }
-
-    virtual sf::Vector2f GetGridCoordinateFromPin(Pin& pin) override
-    {
-        return GetGridCoordinateFromPinId(pin.GetId());
-    }
-
-    sf::Vector2f GetGridCoordinateFromPinId(uint32_t pinId)
-    {        
-        uint32_t pinX = pinId % mCircuitBoard.GetPinCount2D().y;
-        uint32_t pinY = pinId / mCircuitBoard.GetPinCount2D().y;
-
-        const sf::FloatRect& bounds = mViewController->GetBounds();
-
-        // Convert pinId back to screen coordinates
-        sf::Vector2f screenCoord;
-        screenCoord.x = pinX * mGridSpacing + bounds.left;
-        screenCoord.y = pinY * mGridSpacing + bounds.top;
-
-        return ClampCoordinates(screenCoord, bounds);
-    }
-
-    sf::Vector2f GetNearestGridCoordinate(sf::Vector2i screenCoord)
-    {        
-        sf::Vector2f worldMousePosition = mViewController->MapPixelToCoords(screenCoord);
-
-        float nearestGridX = std::round(worldMousePosition.x / mGridSpacing) * mGridSpacing;
-        float nearestGridY = std::round(worldMousePosition.y / mGridSpacing) * mGridSpacing;
-        sf::Vector2f nearestGridCoord(nearestGridX, nearestGridY);
-
-        return ClampCoordinates(nearestGridCoord, mViewController->GetBounds());
-    }
-
-    sf::Vector2f ClampCoordinates(const sf::Vector2f& coord, const sf::FloatRect& bounds) 
-    {
-        return { std::clamp(coord.x, bounds.left, bounds.left + bounds.width),
-                 std::clamp(coord.y, bounds.top, bounds.top + bounds.height) };
-    }
-
+private:   
     ComponentPicker mComponentPicker;
     CircuitBoard mCircuitBoard;
     std::unique_ptr<CircuitBoardManipulator> mCircuitBoardManipulator;
@@ -587,7 +544,7 @@ private:
     sf::View mHUDView;
 
     float mGridSpacing = 70.0f;
-    sf::Vector2f mCursor;    
+    sf::Vector2f mCursor;
 };
 
 int main()
