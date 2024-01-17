@@ -3,7 +3,7 @@
 #include<SFML/Graphics.hpp>
 
 class Pin;
-class ComponentPreviewCreator;
+class ComponentFactory;
 
 class ICircuitBoardNavigator
 {
@@ -16,5 +16,5 @@ public:
 class IComponentPickerObserver
 {
 public:
-    virtual void OnCreateNewComponent(ComponentPreviewCreator* componentFactory) = 0;
+    virtual void OnCreateNewComponent(ComponentFactory* factory) = 0;
 };

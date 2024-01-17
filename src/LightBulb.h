@@ -13,8 +13,8 @@ public:
     LightBulb(ICircuitBoardNavigator* navigator)
         : Component(navigator, 2)
     { 
-        GetNextNode(sf::Vector2f());
-        GetNextNode(sf::Vector2f());
+        GetNextNode();
+        GetNextNode();
         
         AddComponentPin(true);   // 0
         AddComponentPin(true);   // 1

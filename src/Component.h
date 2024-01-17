@@ -169,13 +169,14 @@ public:
     
     virtual ~Component() = default;
 
-    Node* GetNextNode(const sf::Vector2f& position)
+    Node* GetNextNode()
     {
         if (mNodes.size() == mMaxNodes)
         {
             return nullptr;
         }
-
+        
+        sf::Vector2f position = mNavigator->GetGridCoordinateFromPin(mNavigator->GetSelectedPin());
         Node node(this, position);
         mNodes.push_back(node);
 

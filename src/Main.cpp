@@ -9,10 +9,10 @@
 
 #include <iostream>
 
-class ComponentPreviewCreator : public sf::Transformable
+class ComponentFactory : public sf::Transformable
 {
 public:
-    ComponentPreviewCreator(std::unique_ptr<Component> shape)
+    ComponentFactory(std::unique_ptr<Component> shape)
         : mShape(std::move(shape))
     { }
 
@@ -58,18 +58,18 @@ public:
 
     void AddComponent(std::unique_ptr<Component> component)
     {
-        if (mComponents.empty())
+        if (mFactories.empty())
         {
             mSelectedComponent = 0;
         }
-        mComponents.emplace_back(std::make_unique<ComponentPreviewCreator>(std::move(component)));
+        mFactories.emplace_back(std::make_unique<ComponentFactory>(std::move(component)));
     }
 
     void StepForward() 
     { 
-        if (!mComponents.empty())
+        if (!mFactories.empty())
         {
-            if (mSelectedComponent.value() + 1 >= mComponents.size())
+            if (mSelectedComponent.value() + 1 >= mFactories.size())
             {             
                 mSelectedComponent = 0;
             }
@@ -82,11 +82,11 @@ public:
     
     void StepBack() 
     { 
-        if (!mComponents.empty())
+        if (!mFactories.empty())
         {
             if (mSelectedComponent.value() == 0)
             {             
-                mSelectedComponent = mComponents.size() - 1;
+                mSelectedComponent = mFactories.size() - 1;
             }
             else
             {             
@@ -97,23 +97,23 @@ public:
 
     void CreateNewComponent()
     {
-        assert(mSelectedComponent.has_value() && mSelectedComponent < mComponents.size());
-        ComponentPreviewCreator* factory =  mComponents[mSelectedComponent.value()].get();
+        assert(mSelectedComponent.has_value() && mSelectedComponent < mFactories.size());
+        ComponentFactory* factory = mFactories[mSelectedComponent.value()].get();
 
         for (IComponentPickerObserver* observer : mObservers)
         {
             observer->OnCreateNewComponent(factory);
         }
-    }  
+    }
 
     void Draw(sf::RenderTarget& target)
     {
-        mComponents[mSelectedComponent.value()]->Draw(target);
+        mFactories[mSelectedComponent.value()]->Draw(target);
     }
 
 private:
     std::optional<size_t> mSelectedComponent;
-    std::vector<std::unique_ptr<ComponentPreviewCreator>> mComponents;
+    std::vector<std::unique_ptr<ComponentFactory>> mFactories;
     std::vector<IComponentPickerObserver*> mObservers;
 };
 
@@ -256,7 +256,7 @@ public:
         }
     }
 
-    Component* TryPlaceComponent(const sf::Vector2f& cursor)
+    Component* TryPlaceComponent()
     {        
         assert(mCircuitBoard);
         Component* placedComponent = nullptr;
@@ -264,7 +264,7 @@ public:
         if (mNewComponent != nullptr)
         {
             mPrvPin = mNewComponent->GetSelectedNode();
-            mCntPin = mNewComponent->GetNextNode(cursor);
+            mCntPin = mNewComponent->GetNextNode();
 
             if (mCntPin == nullptr)
             {
@@ -330,7 +330,6 @@ public:
 
     void Update(sf::Vector2f cursorWorldCoord)
     {
-        mCursorWorldCoord = cursorWorldCoord;
         mCircuitBoard.UpdateSelectedPin(cursorWorldCoord);
 
         mCircuitBoardManipulator.MoveComponent();
@@ -350,7 +349,7 @@ public:
 
     void TryPlaceComponent()
     {
-        if (Component* component = mCircuitBoardManipulator.TryPlaceComponent(mCursorWorldCoord))
+        if (Component* component = mCircuitBoardManipulator.TryPlaceComponent())
         {
             component->SetColor(sf::Color::White);
         }
@@ -363,14 +362,13 @@ public:
     }
 
     // IComponentPickerObserver interface
-    virtual void OnCreateNewComponent(ComponentPreviewCreator* componentFactory) override
+    virtual void OnCreateNewComponent(ComponentFactory* factory) override
     {
-        Component* newComponent = componentFactory->CreateShape(&mCircuitBoard);
+        Component* newComponent = factory->CreateShape(&mCircuitBoard);
         mCircuitBoardManipulator.CreateComponent(newComponent);
     }
 
 private:
-    sf::Vector2f mCursorWorldCoord;
     CircuitBoard mCircuitBoard;
     CircuitBoardManipulator mCircuitBoardManipulator;
 };
@@ -463,11 +461,7 @@ public:
 
     void Run()
     {
-        bool isMiddleButtonPressed = false;        
-        sf::Vector2i lastPanPosition;        
-        
-        Component* tempShape = nullptr;
-        Node* selectedNode = nullptr;        
+        bool isMiddleButtonPressed = false;
 
         while (mWindow.isOpen())
         {
