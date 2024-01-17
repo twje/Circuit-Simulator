@@ -158,15 +158,16 @@ private:
 class Component
 {
 public:
-    virtual ~Component() = default;
-
-    Component(ICircuitBoardNavigator& navigator, size_t maxNodes)
+    Component() = default;
+    Component(ICircuitBoardNavigator* navigator, size_t maxNodes)
         : mNavigator(navigator)
         , mMaxNodes(maxNodes)
         , mColor(sf::Color::Green)
     {
         mNodes.reserve(maxNodes);
     }
+    
+    virtual ~Component() = default;
 
     Node* GetNextNode(const sf::Vector2f& position)
     {
@@ -233,7 +234,7 @@ public:
         */
     }
 
-    virtual Component* CreateShape(ICircuitBoardNavigator& navigator) const = 0;
+    virtual Component* CreateShape(ICircuitBoardNavigator* navigator) const = 0;
     
     // 
     virtual void Move() = 0;
@@ -263,23 +264,23 @@ protected:
     const sf::Vector2f& GetCircuitBoardPinPosition(uint32_t componentPinId)
     {
         Pin* temporaryConnectionPin = GetComponentPin(componentPinId).GetTemporaryConnectionPin();
-        return mNavigator.GetGridCoordinateFromPin(*temporaryConnectionPin);
+        return mNavigator->GetGridCoordinateFromPin(*temporaryConnectionPin);
     }
 
     Pin* GetNeighborCircuitBoardPin(Pin& circuitBoardPin, const sf::Vector2i& neighborOffset)
     {
-        return mNavigator.GetSurroundingPin(circuitBoardPin, neighborOffset);
+        return mNavigator->GetSurroundingPin(circuitBoardPin, neighborOffset);
     }
 
     Pin& GetCircuitBoardPinAtCursor()
     {
-        return mNavigator.GetSelectedPin();
+        return mNavigator->GetSelectedPin();
     }
 
     sf::Color mColor;
 
 private:
-    ICircuitBoardNavigator& mNavigator;
+    ICircuitBoardNavigator* mNavigator;
     std::vector<ComponentPin> mPins;
     std::vector<Node> mNodes;    
     Node* mSelectedNode{ nullptr };

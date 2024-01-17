@@ -9,7 +9,8 @@
 class LightBulb : public Component
 {
 public:
-    LightBulb(ICircuitBoardNavigator& navigator)
+    LightBulb() = default;
+    LightBulb(ICircuitBoardNavigator* navigator)
         : Component(navigator, 2)
     { 
         GetNextNode(sf::Vector2f());
@@ -27,7 +28,7 @@ public:
         mDirectionsMap[3] = { 0, 1 };
     }
 
-    virtual Component* CreateShape(ICircuitBoardNavigator& navigator) const
+    virtual Component* CreateShape(ICircuitBoardNavigator* navigator) const
     {
         auto component = new LightBulb(navigator);
         component->UpdateComponent();

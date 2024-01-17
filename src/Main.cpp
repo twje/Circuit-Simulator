@@ -39,7 +39,7 @@ public:
         mShape->DrawIcon(target, getTransform(), localBounds);
     }
 
-    Component* CreateShape(ICircuitBoardNavigator& navigator)
+    Component* CreateShape(ICircuitBoardNavigator* navigator)
     {
         return mShape->CreateShape(navigator);
     }
@@ -51,6 +51,11 @@ private:
 class ComponentPicker
 {
 public:
+    void Subscribe(IComponentPickerObserver* observer)
+    {
+        mObservers.push_back(observer);
+    }
+
     void AddComponent(std::unique_ptr<Component> component)
     {
         if (mComponents.empty())
@@ -90,11 +95,16 @@ public:
         }
     }
 
-    Component* NewComponent(ICircuitBoardNavigator& navigator) const
+    void CreateNewComponent()
     {
         assert(mSelectedComponent.has_value() && mSelectedComponent < mComponents.size());
-        return mComponents[mSelectedComponent.value()]->CreateShape(navigator);
-    }    
+        ComponentPreviewCreator* factory =  mComponents[mSelectedComponent.value()].get();
+
+        for (IComponentPickerObserver* observer : mObservers)
+        {
+            observer->OnCreateNewComponent(factory);
+        }
+    }  
 
     void Draw(sf::RenderTarget& target)
     {
@@ -104,6 +114,7 @@ public:
 private:
     std::optional<size_t> mSelectedComponent;
     std::vector<std::unique_ptr<ComponentPreviewCreator>> mComponents;
+    std::vector<IComponentPickerObserver*> mObservers;
 };
 
 class CircuitBoard : public ICircuitBoardNavigator
@@ -162,7 +173,10 @@ public:
             }
         }
 
-
+        for (Component* component : mComponents)
+        {
+            component->DrawComponent(target);
+        }
 
         if (mSelectedPin)
         {
@@ -225,9 +239,9 @@ public:
         : mCircuitBoard(circuitBoard)
     { }
 
-    void CreateComponent(ICircuitBoardNavigator& navigator, const ComponentPicker& componentPicker)
+    void CreateComponent(Component* newComponent)
     {        
-        mNewComponent = componentPicker.NewComponent(navigator);
+        mNewComponent = newComponent;
         mCntPin = mNewComponent->GetSelectedNode();
     }
 
@@ -303,7 +317,59 @@ private:
     Node* mCntPin{ nullptr };
 };
 
+class CircuitBoardController : public IComponentPickerObserver
+{
+public:
+    CircuitBoardController()
+    {
+        mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
+    }
 
+    virtual void OnCreateNewComponent(ComponentPreviewCreator* componentFactory) override
+    {
+        Component* newComponent = componentFactory->CreateShape(&mCircuitBoard);
+        mCircuitBoardManipulator->CreateComponent(newComponent);
+    }    
+
+    void Update(sf::Vector2f cursorWorldCoord)
+    {
+        mCursorWorldCoord = cursorWorldCoord;
+        mCircuitBoard.UpdateSelectedPin(cursorWorldCoord);
+
+        mCircuitBoardManipulator->MoveComponent();
+
+        if (mCircuitBoardManipulator->IsManipulatingComponent())
+        {
+            if (mCircuitBoardManipulator->IsComponentPlaceable())
+            {
+                mCircuitBoardManipulator->SetComponentColor(sf::Color::Magenta);
+            }
+            else
+            {
+                mCircuitBoardManipulator->SetComponentColor(sf::Color::Cyan);
+            }
+        }
+    }
+
+    void TryPlaceComponent()
+    {
+        if (Component* component = mCircuitBoardManipulator->TryPlaceComponent(mCursorWorldCoord))
+        {
+            component->SetColor(sf::Color::White);
+        }
+    }
+
+    void Draw(sf::RenderTarget& target)
+    {
+        mCircuitBoard.Draw(target);
+        mCircuitBoardManipulator->Draw(target);
+    }
+
+private:
+    sf::Vector2f mCursorWorldCoord;
+    CircuitBoard mCircuitBoard;
+    std::unique_ptr<CircuitBoardManipulator> mCircuitBoardManipulator;
+};
 
 class ViewController
 {
@@ -382,18 +448,13 @@ class Application
 public:
     Application()
         : mWindow(sf::VideoMode(sf::Vector2u(1600, 960), 32), "SFML works!")        
-    {
-        
-
+    {        
         mView = mWindow.getDefaultView();
-        mHUDView = mWindow.getDefaultView();       
+        mHUDView = mWindow.getDefaultView();
 
-        //mComponentPicker.AddComponent(std::make_unique<Wire>(sf::Vector2f(), mGridSpacing));
-        mComponentPicker.AddComponent(std::make_unique<LightBulb>(mCircuitBoard));
-        //mComponentPicker.AddComponent(std::make_unique<Battery>());
-
-        mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
         mViewController = std::make_unique<ViewController>(mWindow, mView);
+        mComponentPicker.Subscribe(&mCircuitBoardController);
+        mComponentPicker.AddComponent(std::make_unique<LightBulb>());
     }
 
     void Run()
@@ -406,8 +467,7 @@ public:
 
         while (mWindow.isOpen())
         {
-            sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);
-            float zoomIncrement = 0.0f;
+            sf::Vector2i mousePosition = sf::Mouse::getPosition(mWindow);            
             bool isLeftButtonJustReleased = false;
             bool createShape = false;      
 
@@ -480,52 +540,25 @@ public:
                 mViewController->UpdatePan();
             }
 
-            //mCursor = GetNearestGridCoordinate(mousePosition);
-
-            // Manipulate component
             if (createShape)
             {
-                mCircuitBoardManipulator->CreateComponent(mCircuitBoard, mComponentPicker);
+                mComponentPicker.CreateNewComponent();
             }
 
-            mCircuitBoardManipulator->MoveComponent();
-
-            if (mCircuitBoardManipulator->IsManipulatingComponent())
-            {
-                if (mCircuitBoardManipulator->IsComponentPlaceable())
-                {
-                    mCircuitBoardManipulator->SetComponentColor(sf::Color::Magenta);
-                }
-                else
-                {
-                    mCircuitBoardManipulator->SetComponentColor(sf::Color::Cyan);
-                }
-            }
+            sf::Vector2f cursorWorldCoord = mViewController->MapPixelToCoords(mousePosition);
+            mCircuitBoardController.Update(cursorWorldCoord);
 
             if (isLeftButtonJustReleased)
             {
-                if (Component* component = mCircuitBoardManipulator->TryPlaceComponent(mCursor))
-                {
-                    component->SetColor(sf::Color::White);
-                }
+                mCircuitBoardController.TryPlaceComponent();
             }
-
+            
             mWindow.setView(mView);
             mWindow.clear();
                         
-            sf::FloatRect viewBounds = sf::FloatRect(mView.getCenter() - mView.getSize() / 2.0f,
-                                                     mView.getSize());
-            
-            
-            mCircuitBoard.Draw(mWindow);
-            mCircuitBoardManipulator->Draw(mWindow);
-            DrawPoint(mWindow, mCursor, 3.0f, sf::Color::Yellow);
-            
-            sf::Vector2f cursorWorldCoord = mViewController->MapPixelToCoords(mousePosition);
-            mCircuitBoard.UpdateSelectedPin(cursorWorldCoord);
-            mCircuitBoard.Draw(mWindow);
+            mCircuitBoardController.Draw(mWindow);
 
-            // DRAW BOUNDs            
+            // DRAW BOUNDs
             mWindow.setView(mHUDView);
             mComponentPicker.Draw(mWindow);
 
@@ -534,17 +567,13 @@ public:
     }
 
 private:   
-    ComponentPicker mComponentPicker;
-    CircuitBoard mCircuitBoard;
-    std::unique_ptr<CircuitBoardManipulator> mCircuitBoardManipulator;
+    CircuitBoardController mCircuitBoardController;
+    ComponentPicker mComponentPicker;    
     std::unique_ptr<ViewController> mViewController;
 
     sf::RenderWindow mWindow;    
     sf::View mView;
-    sf::View mHUDView;
-
-    float mGridSpacing = 70.0f;
-    sf::Vector2f mCursor;
+    sf::View mHUDView;    
 };
 
 int main()
