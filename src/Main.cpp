@@ -235,9 +235,10 @@ private:
 class CircuitBoardManipulator
 {
 public:
-    CircuitBoardManipulator(CircuitBoard& circuitBoard)
-        : mCircuitBoard(circuitBoard)
-    { }
+    void SetCircuitBoard(CircuitBoard* circuitBoard)
+    {
+        mCircuitBoard = circuitBoard;
+    }
 
     void CreateComponent(Component* newComponent)
     {        
@@ -247,15 +248,17 @@ public:
 
     void MoveComponent()
     {        
+        assert(mCircuitBoard);
         if (mNewComponent != nullptr)
         {
             mNewComponent->Move();
-            mConnectionConnector = mCircuitBoard.CollectConnections(mNewComponent);
+            mConnectionConnector = mCircuitBoard->CollectConnections(mNewComponent);
         }
     }
 
     Component* TryPlaceComponent(const sf::Vector2f& cursor)
     {        
+        assert(mCircuitBoard);
         Component* placedComponent = nullptr;
 
         if (mNewComponent != nullptr)
@@ -269,7 +272,7 @@ public:
                 {
                     placedComponent = mNewComponent;
                     mConnectionConnector.Connect();                                        
-                    mCircuitBoard.AddComponent(mNewComponent);
+                    mCircuitBoard->AddComponent(mNewComponent);
                     mNewComponent = nullptr;                    
                 }
                 else
@@ -310,8 +313,8 @@ public:
     }
 
 private:
-    CircuitBoard& mCircuitBoard;
     ConnectionConnector mConnectionConnector;
+    CircuitBoard* mCircuitBoard{ nullptr };
     Component* mNewComponent{ nullptr };
     Node* mPrvPin{ nullptr };
     Node* mCntPin{ nullptr };
@@ -322,38 +325,32 @@ class CircuitBoardController : public IComponentPickerObserver
 public:
     CircuitBoardController()
     {
-        mCircuitBoardManipulator = std::make_unique<CircuitBoardManipulator>(mCircuitBoard);
+        mCircuitBoardManipulator.SetCircuitBoard(&mCircuitBoard);
     }
-
-    virtual void OnCreateNewComponent(ComponentPreviewCreator* componentFactory) override
-    {
-        Component* newComponent = componentFactory->CreateShape(&mCircuitBoard);
-        mCircuitBoardManipulator->CreateComponent(newComponent);
-    }    
 
     void Update(sf::Vector2f cursorWorldCoord)
     {
         mCursorWorldCoord = cursorWorldCoord;
         mCircuitBoard.UpdateSelectedPin(cursorWorldCoord);
 
-        mCircuitBoardManipulator->MoveComponent();
+        mCircuitBoardManipulator.MoveComponent();
 
-        if (mCircuitBoardManipulator->IsManipulatingComponent())
+        if (mCircuitBoardManipulator.IsManipulatingComponent())
         {
-            if (mCircuitBoardManipulator->IsComponentPlaceable())
+            if (mCircuitBoardManipulator.IsComponentPlaceable())
             {
-                mCircuitBoardManipulator->SetComponentColor(sf::Color::Magenta);
+                mCircuitBoardManipulator.SetComponentColor(sf::Color::Magenta);
             }
             else
             {
-                mCircuitBoardManipulator->SetComponentColor(sf::Color::Cyan);
+                mCircuitBoardManipulator.SetComponentColor(sf::Color::Cyan);
             }
         }
     }
 
     void TryPlaceComponent()
     {
-        if (Component* component = mCircuitBoardManipulator->TryPlaceComponent(mCursorWorldCoord))
+        if (Component* component = mCircuitBoardManipulator.TryPlaceComponent(mCursorWorldCoord))
         {
             component->SetColor(sf::Color::White);
         }
@@ -362,13 +359,20 @@ public:
     void Draw(sf::RenderTarget& target)
     {
         mCircuitBoard.Draw(target);
-        mCircuitBoardManipulator->Draw(target);
+        mCircuitBoardManipulator.Draw(target);
+    }
+
+    // IComponentPickerObserver interface
+    virtual void OnCreateNewComponent(ComponentPreviewCreator* componentFactory) override
+    {
+        Component* newComponent = componentFactory->CreateShape(&mCircuitBoard);
+        mCircuitBoardManipulator.CreateComponent(newComponent);
     }
 
 private:
     sf::Vector2f mCursorWorldCoord;
     CircuitBoard mCircuitBoard;
-    std::unique_ptr<CircuitBoardManipulator> mCircuitBoardManipulator;
+    CircuitBoardManipulator mCircuitBoardManipulator;
 };
 
 class ViewController
